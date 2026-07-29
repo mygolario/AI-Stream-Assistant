@@ -11,6 +11,7 @@ import {
   updateSettings,
   fetchSettings,
 } from '../services/api';
+import { apiErrorMessage } from '../utils/apiError';
 
 type Platform = 'kick' | 'twitch' | 'youtube';
 
@@ -42,8 +43,8 @@ export const LiveControlPage: React.FC = () => {
         // settings may be unavailable; connector status still usable
       }
       setError(null);
-    } catch (e: any) {
-      setError(e?.response?.data?.detail || 'Unable to load connector status');
+    } catch (e: unknown) {
+      setError(apiErrorMessage(e, 'Unable to load connector status'));
     }
   };
 
@@ -63,9 +64,6 @@ export const LiveControlPage: React.FC = () => {
     setBusy(p);
     setError(null);
     setInfo(null);
-    // #region agent log
-    fetch('http://127.0.0.1:7942/ingest/e3668dee-f4dc-494a-9139-847d0d2fe9e3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2cb32b'},body:JSON.stringify({sessionId:'2cb32b',runId:'post-fix',hypothesisId:'A',location:'LiveControl.tsx:connect',message:'connect clicked',data:{platform:p,hasChannel:Boolean(channels[p]?.trim())},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     try {
       if (!channels[p]?.trim()) {
         setError(`Enter a ${p} channel ID before connecting.`);
@@ -76,11 +74,8 @@ export const LiveControlPage: React.FC = () => {
       else if (res?.connected) setInfo(`${p} connected.`);
       else setInfo(`${p} channel saved (not live yet).`);
       await refresh();
-    } catch (e: any) {
-      // #region agent log
-      fetch('http://127.0.0.1:7942/ingest/e3668dee-f4dc-494a-9139-847d0d2fe9e3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2cb32b'},body:JSON.stringify({sessionId:'2cb32b',runId:'post-fix',hypothesisId:'A',location:'LiveControl.tsx:connect:error',message:'connect failed',data:{platform:p,status:e?.response?.status,detail:e?.response?.data?.detail},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-      setError(e?.response?.data?.detail || e?.message || `Failed to connect ${p}`);
+    } catch (e: unknown) {
+      setError(apiErrorMessage(e, `Failed to connect ${p}`));
     } finally {
       setBusy(null);
     }
@@ -92,8 +87,8 @@ export const LiveControlPage: React.FC = () => {
     try {
       await disconnectPlatform(p);
       await refresh();
-    } catch (e: any) {
-      setError(e?.response?.data?.detail || e?.message || `Failed to disconnect ${p}`);
+    } catch (e: unknown) {
+      setError(apiErrorMessage(e, `Failed to disconnect ${p}`));
     } finally {
       setBusy(null);
     }

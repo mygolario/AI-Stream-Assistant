@@ -67,32 +67,6 @@ def _ns_from_row(row: dict[str, Any]) -> SimpleNamespace:
 
 @router.post("/register", response_model=TokenResponse)
 async def register(body: RegisterRequest, db: Optional[AsyncSession] = Depends(get_db)):
-    # #region agent log
-    try:
-        import httpx as _httpx
-
-        async with _httpx.AsyncClient(timeout=1.0) as _c:
-            await _c.post(
-                "http://127.0.0.1:7942/ingest/e3668dee-f4dc-494a-9139-847d0d2fe9e3",
-                headers={"Content-Type": "application/json", "X-Debug-Session-Id": "2cb32b"},
-                json={
-                    "sessionId": "2cb32b",
-                    "runId": "post-fix",
-                    "hypothesisId": "E",
-                    "location": "auth.py:register",
-                    "message": "register handler entered",
-                    "data": {
-                        "postgres_enabled": settings.postgres_enabled,
-                        "supabase": supabase_auth.supabase_configured(),
-                        "has_db": db is not None,
-                    },
-                    "timestamp": int(__import__("time").time() * 1000),
-                },
-            )
-    except Exception:
-        pass
-    # #endregion
-
     # Prefer Postgres when available
     if db is not None:
         try:

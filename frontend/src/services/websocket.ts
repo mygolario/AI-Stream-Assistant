@@ -32,10 +32,6 @@ export class ChatWebSocketClient {
   }
 
   connect() {
-    // #region agent log
-    fetch('http://127.0.0.1:7942/ingest/e3668dee-f4dc-494a-9139-847d0d2fe9e3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2cb32b'},body:JSON.stringify({sessionId:'2cb32b',runId:'post-fix',hypothesisId:'C',location:'websocket.ts:connect',message:'ws connect attempt',data:{supported:wsSupportedHere(),host:window.location.host,failCount:this.failCount,disabled:this.disabled},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-
     if (!wsSupportedHere() || this.disabled) {
       return;
     }

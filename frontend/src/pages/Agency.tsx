@@ -4,6 +4,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
 import { createOrganization, fetchMyOrganization } from '../services/api';
+import { apiErrorMessage } from '../utils/apiError';
 
 export const AgencyPage: React.FC = () => {
   const [org, setOrg] = useState<any>(null);
@@ -14,8 +15,8 @@ export const AgencyPage: React.FC = () => {
     try {
       setOrg(await fetchMyOrganization());
       setError(null);
-    } catch (e: any) {
-      setError(e?.response?.data?.detail || 'Unable to load agency workspace');
+    } catch (e: unknown) {
+      setError(apiErrorMessage(e, 'Unable to load agency workspace'));
     }
   };
 
@@ -27,8 +28,8 @@ export const AgencyPage: React.FC = () => {
     try {
       await createOrganization(name);
       await load();
-    } catch (e: any) {
-      setError(e?.response?.data?.detail || 'Create failed — Pro/Agency required');
+    } catch (e: unknown) {
+      setError(apiErrorMessage(e, 'Create failed — Pro/Agency required'));
     }
   };
 

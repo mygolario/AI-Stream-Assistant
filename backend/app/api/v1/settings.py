@@ -158,28 +158,6 @@ async def get_settings(
     db: Optional[AsyncSession] = Depends(get_db),
     user: Optional[AuthUser] = Depends(get_optional_user),
 ):
-    # #region agent log
-    try:
-        import httpx as _httpx
-
-        async with _httpx.AsyncClient(timeout=1.0) as _c:
-            await _c.post(
-                "http://127.0.0.1:7942/ingest/e3668dee-f4dc-494a-9139-847d0d2fe9e3",
-                headers={"Content-Type": "application/json", "X-Debug-Session-Id": "2cb32b"},
-                json={
-                    "sessionId": "2cb32b",
-                    "runId": "post-fix",
-                    "hypothesisId": "A",
-                    "location": "settings.py:get",
-                    "message": "get_settings entered",
-                    "data": {"has_db": db is not None, "has_user": user is not None, "postgres": settings.postgres_enabled},
-                    "timestamp": int(__import__("time").time() * 1000),
-                },
-            )
-    except Exception:
-        pass
-    # #endregion
-
     if db is None:
         uid = int(getattr(user, "id", 0) or 0)
         stored = await supabase_auth.get_settings_json(uid) if uid else {}

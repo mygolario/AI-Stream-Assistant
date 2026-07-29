@@ -6,6 +6,7 @@ import { Button } from '../components/ui/Button';
 import { AnimatedPage } from '../components/ui/AnimatedPage';
 import { useStreamContext } from '../context/StreamContext';
 import { fetchPersonas, activatePersona, updateSettings, createPersona } from '../services/api';
+import { apiErrorMessage } from '../utils/apiError';
 
 export interface PersonaPreset {
   id?: number;
@@ -100,8 +101,8 @@ export const PersonaTunerPage: React.FC = () => {
       }
       setActivePersona(selectedPersona);
       setStatusMessage('Persona configuration saved');
-    } catch (e: any) {
-      setStatusMessage(e?.response?.data?.detail || e?.message || 'Save failed');
+    } catch (e: unknown) {
+      setStatusMessage(apiErrorMessage(e, 'Save failed'));
     }
     setIsSaving(false);
     setTimeout(() => setStatusMessage(null), 3000);

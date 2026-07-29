@@ -3,6 +3,7 @@ import { AnimatedPage } from '../components/ui/AnimatedPage';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { login, register } from '../services/api';
+import { apiErrorMessage } from '../utils/apiError';
 
 interface AuthPageProps {
   onAuthed: () => void;
@@ -19,18 +20,17 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthed }) => {
   const submit = async () => {
     setLoading(true);
     setError(null);
-    // #region agent log
-    fetch('http://127.0.0.1:7942/ingest/e3668dee-f4dc-494a-9139-847d0d2fe9e3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2cb32b'},body:JSON.stringify({sessionId:'2cb32b',runId:'post-fix',hypothesisId:'C',location:'Auth.tsx:submit',message:'auth submit clicked',data:{mode,host:window.location.host,href:window.location.href},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
+    if (mode === 'register' && password.length < 8) {
+      setError('Password must be at least 8 characters.');
+      setLoading(false);
+      return;
+    }
     try {
       if (mode === 'login') await login(email, password);
       else await register(email, password, displayName);
       onAuthed();
-    } catch (e: any) {
-      // #region agent log
-      fetch('http://127.0.0.1:7942/ingest/e3668dee-f4dc-494a-9139-847d0d2fe9e3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2cb32b'},body:JSON.stringify({sessionId:'2cb32b',runId:'post-fix',hypothesisId:'D',location:'Auth.tsx:submit:catch',message:'auth UI caught error',data:{mode,status:e?.response?.status,detail:e?.response?.data?.detail,msg:e?.message},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-      setError(e?.response?.data?.detail || e?.message || 'Auth failed');
+    } catch (e: unknown) {
+      setError(apiErrorMessage(e, 'Auth failed'));
     }
     setLoading(false);
   };
@@ -53,7 +53,13 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuthed }) => {
           <Input label="Display name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
         )}
         <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <Input label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <Input
+          label="Password"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          hint={mode === 'register' ? 'At least 8 characters' : undefined}
+        />
         <Button variant="primary" className="w-full" loading={loading} onClick={submit}>
           {mode === 'login' ? 'Sign in' : 'Create account'}
         </Button>

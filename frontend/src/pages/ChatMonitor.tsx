@@ -6,6 +6,7 @@ import { AnimatedPage } from '../components/ui/AnimatedPage';
 import { ShieldCheck, Zap, Activity } from 'lucide-react';
 import { useStreamContext } from '../context/StreamContext';
 import { fetchAnalytics, sendChatMessage } from '../services/api';
+import { apiErrorMessage } from '../utils/apiError';
 
 export const ChatMonitorPage: React.FC = () => {
   const { isSimulating, startSim, stopSim, messages, setMessages, systemStatus, demoMode } =
@@ -74,8 +75,8 @@ export const ChatMonitorPage: React.FC = () => {
       } else if (res?.status && res.status !== 'processed') {
         setSendError(`Message ${res.status}${res.was_filtered ? ' (filtered)' : ''}`);
       }
-    } catch (e: any) {
-      setSendError(e?.response?.data?.detail || e?.message || 'Failed to send message');
+    } catch (e: unknown) {
+      setSendError(apiErrorMessage(e, 'Failed to send message'));
     } finally {
       setSending(false);
     }

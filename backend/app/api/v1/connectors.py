@@ -155,33 +155,6 @@ async def connect_platform(
 ):
     platform = platform.lower()
 
-    # #region agent log
-    try:
-        import httpx as _httpx
-
-        async with _httpx.AsyncClient(timeout=1.0) as _c:
-            await _c.post(
-                "http://127.0.0.1:7942/ingest/e3668dee-f4dc-494a-9139-847d0d2fe9e3",
-                headers={"Content-Type": "application/json", "X-Debug-Session-Id": "2cb32b"},
-                json={
-                    "sessionId": "2cb32b",
-                    "runId": "post-fix",
-                    "hypothesisId": "A",
-                    "location": "connectors.py:connect",
-                    "message": "connect_platform entered",
-                    "data": {
-                        "platform": platform,
-                        "has_channel_body": bool(body.channel_id),
-                        "vercel": bool(os.getenv("VERCEL")),
-                        "postgres": settings.postgres_enabled,
-                    },
-                    "timestamp": int(__import__("time").time() * 1000),
-                },
-            )
-    except Exception:
-        pass
-    # #endregion
-
     if platform not in allowed_platforms(getattr(user, "plan", "free")) and platform != "simulator":
         raise HTTPException(403, f"Plan '{getattr(user, 'plan', 'free')}' cannot connect {platform}. Upgrade to Pro.")
 

@@ -14,6 +14,7 @@ import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 import { AnimatedPage } from '../components/ui/AnimatedPage';
 import { fetchSettings, updateSettings, testApiKey, connectPlatform } from '../services/api';
+import { apiErrorMessage } from '../utils/apiError';
 
 const DEFAULT_MODEL = 'google/gemini-3.5-flash-lite';
 
@@ -45,8 +46,8 @@ export const SettingsPage: React.FC = () => {
         if (res.custom_prompt_override) setCustomPromptOverride(res.custom_prompt_override);
         setBotMuted(Boolean(res.bot_muted));
         setMentionOnly(Boolean(res.mention_only));
-      } catch (e: any) {
-        setErrorMessage(e?.message || 'Failed to load settings');
+      } catch (e: unknown) {
+        setErrorMessage(apiErrorMessage(e, 'Failed to load settings'));
       }
     };
     load();
@@ -71,8 +72,8 @@ export const SettingsPage: React.FC = () => {
       });
       setStatusMessage('Settings saved');
       setTimeout(() => setStatusMessage(null), 3000);
-    } catch (e: any) {
-      setErrorMessage(e?.response?.data?.detail || e?.message || 'Save failed');
+    } catch (e: unknown) {
+      setErrorMessage(apiErrorMessage(e, 'Save failed'));
     }
     setIsSaving(false);
   };
@@ -93,8 +94,8 @@ export const SettingsPage: React.FC = () => {
       await handleSave();
       const res = await connectPlatform(platform);
       setStatusMessage(`${platform} connected: ${res.connected}`);
-    } catch (e: any) {
-      setErrorMessage(e?.response?.data?.detail || `Failed to connect ${platform}`);
+    } catch (e: unknown) {
+      setErrorMessage(apiErrorMessage(e, `Failed to connect ${platform}`));
     }
   };
 

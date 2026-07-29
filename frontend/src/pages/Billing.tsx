@@ -4,6 +4,7 @@ import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { checkoutPlan, fetchBillingPlan, sandboxActivate } from '../services/api';
+import { apiErrorMessage } from '../utils/apiError';
 
 export const BillingPage: React.FC = () => {
   const [plan, setPlan] = useState<any>(null);
@@ -14,8 +15,8 @@ export const BillingPage: React.FC = () => {
     try {
       setPlan(await fetchBillingPlan());
       setError(null);
-    } catch (e: any) {
-      setError(e?.response?.data?.detail || 'Sign in to view billing');
+    } catch (e: unknown) {
+      setError(apiErrorMessage(e, 'Sign in to view billing'));
     }
   };
 
@@ -33,8 +34,8 @@ export const BillingPage: React.FC = () => {
       } else {
         window.location.href = invoice.payment_url;
       }
-    } catch (e: any) {
-      setError(e?.response?.data?.detail || e?.message || 'Checkout failed');
+    } catch (e: unknown) {
+      setError(apiErrorMessage(e, 'Checkout failed'));
     }
     setBusy(false);
   };
