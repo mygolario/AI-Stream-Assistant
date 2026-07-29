@@ -4,12 +4,14 @@ import { SimulatorControl } from '../components/SimulatorControl';
 import { GlassCard } from '../components/GlassCard';
 import { ShieldCheck, Zap, Activity } from 'lucide-react';
 import { useStreamContext } from '../context/StreamContext';
+import { processUserChatMessage } from '../services/aiHelper';
 
 export const ChatMonitorPage: React.FC = () => {
-  const { isSimulating, startSim, stopSim, messages, setMessages, wsClient } = useStreamContext();
+  const { isSimulating, startSim, stopSim, messages, setMessages, wsClient, activePersona } = useStreamContext();
   const [dropRate] = useState<string>('87.4%');
   const [aiSpeed] = useState<string>('320 ms');
   const [tokensSaved] = useState<string>('14,250');
+
 
   const handleStartSim = (rate: number) => {
     startSim(rate);
@@ -19,18 +21,10 @@ export const ChatMonitorPage: React.FC = () => {
     stopSim();
   };
 
-  const handleSendMessage = (text: string) => {
-    const newMsg: ChatMessageItem = {
-      id: Date.now().toString(),
-      timestamp: new Date().toLocaleTimeString(),
-      username: 'Tester',
-      message: text,
-      isAiResponse: false,
-      isFiltered: false,
-    };
-    setMessages((prev) => [newMsg, ...prev]);
+  const handleSendMessage = async (text: string) => {
+    if (!text.trim()) return;
 
-    // Send through WebSocket client if open
+    // Send through WebSocket client if open backend
     try {
       wsClient.send({
         type: 'client_message',
@@ -39,8 +33,35 @@ export const ChatMonitorPage: React.FC = () => {
         platform: 'simulator',
         channel_id: 'default'
       });
-    } catch (err) {
-      console.warn('WS send failed (offline fallback active):', err);
+    } catch {}
+
+    // Process user input through AI Engine & Intent Filter
+    const result = await processUserChatMessage(text, activePersona);
+
+    const userMsg: ChatMessageItem = {
+      id: Date.now().toString() + '-user',
+      timestamp: new Date().toLocaleTimeString(),
+      username: 'Tester',
+      message: text,
+      isAiResponse: false,
+      isFiltered: result.isFiltered,
+    };
+
+    setMessages((prev) => [userMsg, ...prev]);
+
+    // If AI generates a reply, append bot message after ~500ms delay
+    if (!result.isFiltered && result.botReply) {
+      setTimeout(() => {
+        const botMsg: ChatMessageItem = {
+          id: Date.now().toString() + '-bot',
+          timestamp: new Date().toLocaleTimeString(),
+          username: `StreamBot (${activePersona})`,
+          message: result.botReply!,
+          isAiResponse: true,
+          isFiltered: false,
+        };
+        setMessages((prev) => [botMsg, ...prev]);
+      }, 500);
     }
   };
 
