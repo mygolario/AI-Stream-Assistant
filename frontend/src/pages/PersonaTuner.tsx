@@ -5,13 +5,16 @@ import { Bot, Sparkles, Sliders, CheckCircle2 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { AnimatedPage } from '../components/ui/AnimatedPage';
 import { useStreamContext } from '../context/StreamContext';
-import { fetchPersonas, updateSettings } from '../services/api';
+import { fetchPersonas, activatePersona, updateSettings, createPersona } from '../services/api';
 
 export interface PersonaPreset {
+  id?: number;
   name: string;
-  description: string;
-  emoji: string;
-  defaultPrompt: string;
+  description?: string;
+  emoji?: string;
+  defaultPrompt?: string;
+  system_prompt?: string;
+  temperature?: number;
 }
 
 const defaultPresets: PersonaPreset[] = [
@@ -54,29 +57,53 @@ export const PersonaTunerPage: React.FC = () => {
     const load = async () => {
       try {
         const res = await fetchPersonas();
-        if (Array.isArray(res) && res.length > 0) setPresets(res);
-      } catch {}
+        if (Array.isArray(res) && res.length > 0) {
+          setPresets(
+            res.map((p: any) => ({
+              id: p.id,
+              name: p.name,
+              description: p.system_prompt?.slice(0, 80),
+              emoji: '🎙️',
+              defaultPrompt: p.system_prompt,
+              system_prompt: p.system_prompt,
+              temperature: p.temperature,
+            }))
+          );
+        }
+      } catch (e) {
+        console.error(e);
+      }
     };
     load();
   }, []);
 
   useEffect(() => {
     const preset = presets.find((p) => p.name === selectedPersona);
-    if (preset) setCustomPrompt(preset.defaultPrompt);
+    if (preset) setCustomPrompt(preset.defaultPrompt || preset.system_prompt || '');
   }, [selectedPersona, presets]);
 
   const handleSave = async () => {
     setIsSaving(true);
+    setStatusMessage(null);
     try {
-      await updateSettings({
-        persona: selectedPersona,
-        system_prompt: customPrompt,
-        temperature,
-      });
-    } catch {}
-    setActivePersona(selectedPersona);
+      const match = presets.find((p) => p.name === selectedPersona);
+      if (match?.id) {
+        await activatePersona(match.id);
+        await updateSettings({ custom_prompt_override: customPrompt });
+      } else {
+        const created = await createPersona({
+          name: selectedPersona,
+          system_prompt: customPrompt,
+          temperature,
+        });
+        if (created?.id) await activatePersona(created.id);
+      }
+      setActivePersona(selectedPersona);
+      setStatusMessage('Persona configuration saved');
+    } catch (e: any) {
+      setStatusMessage(e?.response?.data?.detail || e?.message || 'Save failed');
+    }
     setIsSaving(false);
-    setStatusMessage('Persona configuration saved');
     setTimeout(() => setStatusMessage(null), 3000);
   };
 

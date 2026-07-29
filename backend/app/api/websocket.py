@@ -62,8 +62,17 @@ ws_manager = ConnectionManager()
 @router.websocket("/ws/chat")
 async def websocket_chat_endpoint(websocket: WebSocket):
     """
-    Real-time WebSocket endpoint for streaming chat events, simulator events, and AI responses.
+    Real-time WebSocket endpoint. Optional JWT via ?token= for dashboard clients.
     """
+    token = websocket.query_params.get("token")
+    if token:
+        from app.core.security import decode_access_token
+
+        payload = decode_access_token(token)
+        if not payload:
+            await websocket.close(code=4401)
+            return
+
     await ws_manager.connect(websocket)
 
     # Send initial welcome notice

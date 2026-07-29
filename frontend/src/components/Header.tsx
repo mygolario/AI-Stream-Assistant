@@ -11,9 +11,12 @@ interface HeaderProps {
 
 const tabTitles: Record<TabType, string> = {
   chat: 'Live Chat Monitor',
+  live: 'Live Control',
   kb: 'Knowledge Base',
   persona: 'Bot Persona',
   analytics: 'Analytics',
+  billing: 'Billing',
+  agency: 'Agency',
   settings: 'Settings & Guide',
 };
 

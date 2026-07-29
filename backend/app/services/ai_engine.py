@@ -1,22 +1,25 @@
 """
-backend/app/services/ai_engine.py
-Coordinator for the 2-Stage AI Processing Pipeline:
-Stage 1: Intent Filter (Heuristic noise drop)
-Stage 2: RAG Vector Search + Redis History + Persona Prompt + OpenRouter LLM Execution
+Coordinator for the 2-Stage AI Processing Pipeline with moderation + quotas.
 """
 
 import logging
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 
 from app.services.intent_filter import intent_filter, IntentFilterResult
 from app.services.rag import rag_service
 from app.services.openrouter import openrouter_client
 from app.services.persona_engine import persona_engine
+from app.services.moderation import chat_moderator
+from app.services.quota import check_and_increment_quota
 from app.core.redis import redis_helper
+from app.core.config import settings
 from app.models.chat_message import ChatMessage
 from app.models.analytics import AnalyticsLog
+from app.models.settings import StreamerSettings
+from app.models.user import User
 from app.api.websocket import ws_manager
 
 logger = logging.getLogger(__name__)
@@ -24,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class PipelineResult:
-    status: str  # "filtered" or "processed"
+    status: str  # filtered | processed | blocked | quota_exceeded | muted
     was_filtered: bool
     filter_reason: Optional[str] = None
     ai_response: Optional[str] = None
@@ -35,158 +38,205 @@ class PipelineResult:
 
 
 class AIEnginePipeline:
-    """
-    Central Coordinator for processing live stream chat messages through Stage 1 & Stage 2.
-    """
-
     async def process_chat_message(
         self,
         db: AsyncSession,
         platform: str,
         username: str,
         user_message: str,
-        channel_id: str = "default"
+        channel_id: str = "default",
+        user_id: Optional[int] = None,
     ) -> PipelineResult:
-        """
-        Process an incoming chat message through Stage 1 Intent Filter & Stage 2 RAG + OpenRouter LLM.
-        """
-        # ==========================================
-        # STAGE 1: HEURISTIC COST FILTER EVALUATION
-        # ==========================================
-        filter_res: IntentFilterResult = intent_filter.evaluate(user_message)
+        # Load settings / mute
+        settings_obj = await self._get_settings(db, user_id)
+        if settings_obj and settings_obj.bot_muted:
+            return PipelineResult(status="muted", was_filtered=True, filter_reason="bot_muted", tokens_saved=0)
 
+        if settings_obj and settings_obj.mention_only:
+            lowered = user_message.lower()
+            if "@" not in lowered and not lowered.startswith("!ask"):
+                return PipelineResult(
+                    status="filtered",
+                    was_filtered=True,
+                    filter_reason="mention_only",
+                    tokens_saved=8,
+                )
+
+        # Pre-moderation
+        inbound_mod = chat_moderator.check_inbound(user_message)
+        if not inbound_mod.allowed:
+            await self._record_filtered(db, platform, username, user_message, inbound_mod.reason or "moderation", 5)
+            return PipelineResult(
+                status="blocked",
+                was_filtered=True,
+                filter_reason=inbound_mod.reason,
+                tokens_saved=5,
+            )
+
+        # Stage 1 filter
+        filter_res: IntentFilterResult = intent_filter.evaluate(user_message)
         if not filter_res.is_actionable:
-            # Message is noise -> Filter out and record metrics
             chat_entry = ChatMessage(
                 platform=platform,
                 username=username,
                 message=user_message,
                 is_ai_response=False,
                 is_filtered=True,
-                tokens_used=0
+                tokens_used=0,
             )
             db.add(chat_entry)
             await self._update_analytics(db, is_filtered=True, tokens_saved=filter_res.estimated_tokens_saved)
             await db.commit()
-
-            # Store turn in Redis sliding history
             try:
-                await redis_helper.add_chat_turn(
-                    channel_id=channel_id,
-                    username=username,
-                    user_message=user_message,
-                    bot_response=None
-                )
+                await redis_helper.add_chat_turn(channel_id, username, user_message, None)
             except Exception as e:
-                logger.warning(f"Failed to update Redis for filtered message: {e}")
+                logger.warning("Redis update failed: %s", e)
 
-            logger.info(f"[IntentFilter DROPPED] '{user_message}' (Reason: {filter_res.reason}, Saved: ~{filter_res.estimated_tokens_saved} tokens)")
-
+            await ws_manager.broadcast(
+                {
+                    "type": "filtered",
+                    "message": user_message,
+                    "username": username,
+                    "isAiResponse": False,
+                    "isFiltered": True,
+                    "filter_reason": filter_res.reason,
+                }
+            )
             return PipelineResult(
                 status="filtered",
                 was_filtered=True,
                 filter_reason=filter_res.reason,
-                ai_response=None,
-                tokens_used=0,
-                tokens_saved=filter_res.estimated_tokens_saved
+                tokens_saved=filter_res.estimated_tokens_saved,
             )
 
-        # ==========================================
-        # STAGE 2: RAG + CONTEXT + PERSONA + LLM
-        # ==========================================
-        logger.info(f"[IntentFilter PASSED] '{user_message}' -> Triggering Stage 2 RAG & OpenRouter LLM")
+        # Quota
+        user = None
+        if user_id:
+            user = await db.get(User, user_id)
+        allowed, used, limit = await check_and_increment_quota(user)
+        if not allowed:
+            return PipelineResult(
+                status="quota_exceeded",
+                was_filtered=True,
+                filter_reason=f"daily_quota_{used}/{limit}",
+                tokens_saved=0,
+            )
 
-        # 1. RAG Vector Search over KnowledgeBaseItem
+        # Stage 2
         kb_snippets = await rag_service.search_similar_items(db, user_message, top_k=3)
-
-        # 2. Fetch Redis Conversation History
         chat_history = []
         try:
             chat_history = await redis_helper.get_chat_history(channel_id, username, limit=6)
         except Exception as e:
-            logger.warning(f"Failed to fetch Redis chat history: {e}")
+            logger.warning("Redis history failed: %s", e)
 
-        # 3. Retrieve Active Persona & Streamer Settings
         persona, settings_obj = await persona_engine.get_active_persona(db)
-
-        # 4. Compile Persona System Prompt
         system_prompt = persona_engine.compile_system_prompt(
             persona_name=persona.name,
             persona_prompt=persona.system_prompt,
             kb_snippets=kb_snippets,
-            custom_prompt_override=settings_obj.custom_prompt_override
+            custom_prompt_override=settings_obj.custom_prompt_override if settings_obj else None,
         )
+        if settings_obj and not settings_obj.general_knowledge_enabled:
+            system_prompt += (
+                "\n\nIf the knowledge base does not contain the answer, reply briefly that you "
+                "don't have that in the streamer's notes. Do not invent personal facts."
+            )
+        system_prompt += "\nKeep replies under 150 characters when possible. Stream chat style."
 
-        # 5. Format LLM Messages Payload
         messages_payload = [{"role": "system", "content": system_prompt}]
         for turn in chat_history:
             if turn.get("user"):
                 messages_payload.append({"role": "user", "content": turn["user"]})
             if turn.get("assistant"):
                 messages_payload.append({"role": "assistant", "content": turn["assistant"]})
-
         messages_payload.append({"role": "user", "content": user_message})
 
-        # 6. Execute OpenRouter Client Call
+        api_key = settings.OPENROUTER_API_KEY
+        if settings_obj and settings_obj.openrouter_api_key:
+            # Prefer platform env key; allow encrypted/plain workspace override only if env empty
+            if not api_key:
+                api_key = settings_obj.openrouter_api_key
+
+        # Product lock: all LLM features use gemini-3.5-flash-lite
+        model = settings.DEFAULT_OPENROUTER_MODEL
+
         ai_text, tokens_used, model_used = await openrouter_client.generate_chat_response(
             messages=messages_payload,
-            model=settings_obj.selected_model,
-            api_key=settings_obj.openrouter_api_key,
-            temperature=persona.temperature
+            model=model,
+            api_key=api_key,
+            temperature=persona.temperature,
+            max_tokens=120,
         )
+        ai_text = chat_moderator.truncate_reply(ai_text, 150)
+        outbound = chat_moderator.check_outbound(ai_text)
+        if not outbound.allowed:
+            ai_text = "I can't share that here — ask the streamer or mods."
 
-        # 7. Record User Message & AI Response in Database
-        user_entry = ChatMessage(
-            platform=platform,
-            username=username,
-            message=user_message,
-            is_ai_response=False,
-            is_filtered=False,
-            tokens_used=0
+        db.add(
+            ChatMessage(
+                platform=platform,
+                username=username,
+                message=user_message,
+                is_ai_response=False,
+                is_filtered=False,
+                tokens_used=0,
+            )
         )
-        db.add(user_entry)
-
-        ai_entry = ChatMessage(
-            platform=platform,
-            username="AI Assistant",
-            message=ai_text,
-            is_ai_response=True,
-            is_filtered=False,
-            tokens_used=tokens_used
+        db.add(
+            ChatMessage(
+                platform=platform,
+                username="AI Assistant",
+                message=ai_text,
+                is_ai_response=True,
+                is_filtered=False,
+                tokens_used=tokens_used,
+            )
         )
-        db.add(ai_entry)
-
-        await self._update_analytics(db, is_filtered=False, is_ai_response=True, tokens_used=tokens_used)
+        await self._update_analytics(db, is_ai_response=True, tokens_used=tokens_used)
         await db.commit()
 
-        # 8. Update Redis Sliding Window Memory
         try:
-            await redis_helper.add_chat_turn(
-                channel_id=channel_id,
-                username=username,
-                user_message=user_message,
-                bot_response=ai_text
-            )
+            await redis_helper.add_chat_turn(channel_id, username, user_message, ai_text)
         except Exception as e:
-            logger.warning(f"Failed to update Redis for AI turn: {e}")
+            logger.warning("Redis turn failed: %s", e)
 
-        # 9. Broadcast AI Response over WebSocket
-        ws_payload = {
-            "type": "ai_response",
-            "data": {
-                "platform": platform,
-                "channel_id": channel_id,
-                "username": username,
-                "user_message": user_message,
-                "ai_response": ai_text,
-                "persona": persona.name,
-                "tokens_used": tokens_used
+        await ws_manager.broadcast(
+            {
+                "type": "ai_response",
+                "message": ai_text,
+                "username": "AI Assistant",
+                "isAiResponse": True,
+                "isFiltered": False,
+                "data": {
+                    "platform": platform,
+                    "channel_id": channel_id,
+                    "username": username,
+                    "user_message": user_message,
+                    "ai_response": ai_text,
+                    "persona": persona.name,
+                    "tokens_used": tokens_used,
+                },
             }
-        }
+        )
         try:
-            await ws_manager.broadcast(ws_payload)
-        except Exception as e:
-            logger.warning(f"Failed WS broadcast: {e}")
+            from app.api.v1.overlay import push_overlay_reply
+
+            push_overlay_reply(
+                {"username": username, "ai_response": ai_text, "user_message": user_message}
+            )
+        except Exception:
+            pass
+        # Also echo user message for monitors that only listen for message field
+        await ws_manager.broadcast(
+            {
+                "type": "chat_message",
+                "message": user_message,
+                "username": username,
+                "isAiResponse": False,
+                "isFiltered": False,
+            }
+        )
 
         return PipelineResult(
             status="processed",
@@ -194,8 +244,31 @@ class AIEnginePipeline:
             ai_response=ai_text,
             tokens_used=tokens_used,
             kb_snippets_used=kb_snippets,
-            model_used=model_used
+            model_used=model_used,
         )
+
+    async def _get_settings(self, db: AsyncSession, user_id: Optional[int]) -> Optional[StreamerSettings]:
+        if user_id:
+            result = await db.execute(select(StreamerSettings).where(StreamerSettings.user_id == user_id))
+            obj = result.scalars().first()
+            if obj:
+                return obj
+        result = await db.execute(select(StreamerSettings).limit(1))
+        return result.scalars().first()
+
+    async def _record_filtered(self, db, platform, username, message, reason, tokens_saved):
+        db.add(
+            ChatMessage(
+                platform=platform,
+                username=username,
+                message=message,
+                is_ai_response=False,
+                is_filtered=True,
+                tokens_used=0,
+            )
+        )
+        await self._update_analytics(db, is_filtered=True, tokens_saved=tokens_saved)
+        await db.commit()
 
     async def _update_analytics(
         self,
@@ -203,19 +276,20 @@ class AIEnginePipeline:
         is_filtered: bool = False,
         is_ai_response: bool = False,
         tokens_used: int = 0,
-        tokens_saved: int = 0
+        tokens_saved: int = 0,
     ):
-        """Helper to update AnalyticsLog record in DB."""
         try:
             log = AnalyticsLog(
                 message_count=1,
                 filtered_count=1 if is_filtered else 0,
                 ai_response_count=1 if is_ai_response else 0,
-                estimated_tokens_saved=tokens_saved if is_filtered else tokens_used
+                estimated_tokens_saved=tokens_saved if is_filtered else 0,
             )
             db.add(log)
+            # tokens_used tracked on ChatMessage rows, not as "saved"
+            _ = tokens_used
         except Exception as e:
-            logger.error(f"Error updating AnalyticsLog: {e}")
+            logger.error("AnalyticsLog error: %s", e)
 
 
 ai_engine_pipeline = AIEnginePipeline()

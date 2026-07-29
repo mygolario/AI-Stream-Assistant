@@ -1,15 +1,33 @@
 export type WebSocketMessageHandler = (data: any) => void;
 
+function resolveWsUrl(): string {
+  const envUrl = (import.meta as any).env?.VITE_WS_URL;
+  if (envUrl) return envUrl;
+  const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  const host = window.location.host;
+  const token = localStorage.getItem('asa_token');
+  const q = token ? `?token=${encodeURIComponent(token)}` : '';
+  // Vite proxies /ws → backend in dev
+  return `${proto}://${host}/ws/chat${q}`;
+}
+
 export class ChatWebSocketClient {
   private ws: WebSocket | null = null;
   private listeners: WebSocketMessageHandler[] = [];
   private url: string;
+  private shouldReconnect = true;
+  private reconnectTimer: number | null = null;
 
-  constructor(url: string = 'ws://localhost:8000/ws/chat') {
-    this.url = url;
+  constructor(url?: string) {
+    this.url = url || resolveWsUrl();
   }
 
   connect() {
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+    this.shouldReconnect = true;
+    this.url = resolveWsUrl();
     this.ws = new WebSocket(this.url);
 
     this.ws.onopen = () => {
@@ -26,9 +44,18 @@ export class ChatWebSocketClient {
     };
 
     this.ws.onclose = () => {
-      console.log('Chat WebSocket disconnected, reconnecting in 3s...');
-      setTimeout(() => this.connect(), 3000);
+      console.log('Chat WebSocket disconnected');
+      if (this.shouldReconnect) {
+        this.reconnectTimer = window.setTimeout(() => this.connect(), 3000);
+      }
     };
+  }
+
+  disconnect() {
+    this.shouldReconnect = false;
+    if (this.reconnectTimer) window.clearTimeout(this.reconnectTimer);
+    this.ws?.close();
+    this.ws = null;
   }
 
   subscribe(handler: WebSocketMessageHandler) {

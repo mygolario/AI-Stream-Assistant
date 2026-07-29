@@ -162,7 +162,12 @@ class MockStreamSimulator(AbstractChatConnector):
         if self._ws_broadcaster:
             await self._ws_broadcaster.broadcast({
                 "type": "chat_message",
-                "data": msg_data
+                "message": msg_data.get("message"),
+                "username": msg_data.get("username"),
+                "isAiResponse": False,
+                "isFiltered": False,
+                "timestamp": msg_data.get("timestamp"),
+                "data": msg_data,
             })
 
     async def _process_message_with_ai(self, msg_data: Dict[str, Any]):

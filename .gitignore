@@ -1,6 +1,7 @@
 # Environment variables / secrets
 .env
 *.env
+!.env.example
 
 # Python
 __pycache__/
@@ -24,3 +25,8 @@ frontend/dist/
 .idea/
 .vscode/
 *.log
+.cursor/debug*.log
+
+# OS
+Thumbs.db
+.DS_Store

@@ -95,6 +95,7 @@ class TwitchChatConnector(AbstractChatConnector):
                 if message_type == "session_welcome":
                     self.session_id = data.get("payload", {}).get("session", {}).get("id")
                     logger.info(f"Received Twitch EventSub session_welcome ID: {self.session_id}")
+                    await self._create_chat_subscription()
 
                 elif message_type == "notification":
                     event_payload = data.get("payload", {})
@@ -132,3 +133,39 @@ class TwitchChatConnector(AbstractChatConnector):
             except Exception as e:
                 logger.error(f"Error in Twitch EventSub listen loop: {e}")
                 await asyncio.sleep(1)
+
+    async def _create_chat_subscription(self) -> None:
+        """Create channel.chat.message EventSub subscription for this session."""
+        if not self.session_id or not self.client_id or not self.oauth_token:
+            logger.warning("Twitch EventSub subscription skipped (missing session/credentials)")
+            return
+        headers = {
+            "Client-Id": self.client_id,
+            "Authorization": f"Bearer {self.oauth_token.replace('oauth:', '')}",
+            "Content-Type": "application/json",
+        }
+        body = {
+            "type": "channel.chat.message",
+            "version": "1",
+            "condition": {
+                "broadcaster_user_id": str(self.channel_id),
+                "user_id": str(self.channel_id),
+            },
+            "transport": {
+                "method": "websocket",
+                "session_id": self.session_id,
+            },
+        }
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                res = await client.post(
+                    "https://api.twitch.tv/helix/eventsub/subscriptions",
+                    headers=headers,
+                    json=body,
+                )
+                if res.status_code in (200, 202):
+                    logger.info("Twitch channel.chat.message subscription created")
+                else:
+                    logger.error("Twitch subscription failed HTTP %s: %s", res.status_code, res.text[:300])
+        except Exception as e:
+            logger.error("Twitch subscription error: %s", e)

@@ -27,7 +27,16 @@ export const Layout: React.FC<LayoutProps> = ({ activeTab, setActiveTab, childre
 
   const handleNavigate = (id: string) => {
     // Check if it's a page navigation
-    const validTabs: TabType[] = ['chat', 'kb', 'persona', 'analytics', 'settings'];
+    const validTabs: TabType[] = [
+      'chat',
+      'live',
+      'kb',
+      'persona',
+      'analytics',
+      'billing',
+      'agency',
+      'settings',
+    ];
     if (validTabs.includes(id as TabType)) {
       setActiveTab(id as TabType);
     }

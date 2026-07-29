@@ -1,0 +1,17 @@
+---
+description: AI Stream Assistant project and agent rules
+alwaysApply: true
+---
+
+# AI Stream Assistant — Cursor Rules
+
+Follow `docs/PROJECT_CONTEXT.md`, `docs/PROJECT_RULES.md`, and `docs/AGENT_RULES.md`.
+
+## Hard requirements
+
+- Default LLM: `google/gemini-3.5-flash-lite` via OpenRouter **backend only**.
+- No silent mock success when API fails; demo mode must be explicit.
+- Settings fields: `openrouter_api_key`, `selected_model`, `kick_channel_id`, `twitch_channel_id`, `youtube_channel_id`, `custom_prompt_override`. Use `PUT /settings`.
+- Simulator: `{ interval_seconds }`.
+- English-only product copy for now.
+- Prefer fixing live connectors and contracts over decorative UI.

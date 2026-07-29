@@ -23,9 +23,10 @@ class KickChatConnector(AbstractChatConnector):
     Subscribes to channel chatroom events and parses ChatMessageEvent payloads.
     """
 
-    def __init__(self, channel_id: str, chatroom_id: Optional[str] = None):
+    def __init__(self, channel_id: str, chatroom_id: Optional[str] = None, bot_token: str = ""):
         super().__init__(platform_name="kick", channel_id=channel_id)
         self.chatroom_id = chatroom_id or channel_id
+        self.bot_token = bot_token
         self._ws: Optional[websockets.WebSocketClientProtocol] = None
         self._listen_task: Optional[asyncio.Task] = None
         self._ping_task: Optional[asyncio.Task] = None
@@ -72,13 +73,32 @@ class KickChatConnector(AbstractChatConnector):
         logger.info(f"Disconnected Kick chat connector for channel {self.channel_id}")
 
     async def send_message(self, message: str) -> bool:
-        """
-        Send message to Kick chat (requires Kick API token if available).
-        Mock fallback for sending message when token is not configured.
-        """
+        """Send message to Kick chat via public API when bot token is configured."""
         logger.info(f"[Kick Bot Send] Channel: {self.channel_id} -> {message}")
-        # In actual Kick API deployment, send via POST request to https://kick.com/api/v2/messages/send
-        return True
+        if not self.bot_token:
+            logger.warning("Kick bot token missing; message logged only")
+            return True
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                headers = {
+                    "Authorization": f"Bearer {self.bot_token}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                }
+                # Kick chat send endpoints evolve; try public v2 then legacy path
+                payloads = [
+                    ("https://kick.com/api/v2/messages/send/" + str(self.chatroom_id), {"content": message, "type": "message"}),
+                    ("https://api.kick.com/public/v1/chat", {"content": message, "broadcaster_user_id": int(self.channel_id) if str(self.channel_id).isdigit() else self.channel_id}),
+                ]
+                for url, body in payloads:
+                    res = await client.post(url, json=body, headers=headers)
+                    if res.status_code in (200, 201):
+                        return True
+                    logger.warning("Kick send attempt %s -> HTTP %s", url, res.status_code)
+        except Exception as e:
+            logger.error("Kick send_message failed: %s", e)
+            return False
+        return False
 
     async def _listen_loop(self) -> None:
         """Listen loop for incoming Pusher WebSocket messages."""

@@ -31,5 +31,6 @@ async def health_check(db: AsyncSession = Depends(get_db)):
         "status": "online" if (db_ok and redis_ok) else "degraded",
         "database": "connected" if db_ok else "error",
         "redis": "connected" if redis_ok else "error",
-        "version": "1.0.0"
+        "version": "1.1.0",
+        "model": "google/gemini-3.5-flash-lite",
     }

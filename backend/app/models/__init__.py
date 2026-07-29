@@ -3,6 +3,7 @@ from app.models.knowledge_base import KnowledgeBaseItem
 from app.models.persona import Persona
 from app.models.analytics import AnalyticsLog
 from app.models.chat_message import ChatMessage
+from app.models.user import User, Organization, OrganizationMember, WorkspaceChannel
 
 __all__ = [
     "StreamerSettings",
@@ -10,4 +11,8 @@ __all__ = [
     "Persona",
     "AnalyticsLog",
     "ChatMessage",
+    "User",
+    "Organization",
+    "OrganizationMember",
+    "WorkspaceChannel",
 ]
