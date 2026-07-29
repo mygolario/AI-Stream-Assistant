@@ -134,8 +134,11 @@ export const stopSimulator = async () => {
   return res.data;
 };
 
-export const connectPlatform = async (platform: string) => {
-  const res = await api.post(`/connectors/${platform}/connect`);
+export const connectPlatform = async (
+  platform: string,
+  payload?: { channel_id?: string; bot_token?: string },
+) => {
+  const res = await api.post(`/connectors/${platform}/connect`, payload || {});
   return res.data;
 };
 
