@@ -23,6 +23,18 @@
       linear-gradient(180deg, #0b1411 0%, #0e1914 40%, #0b1411 100%);
   }
 
+  /* Prevent UA white fields + inherited light text (unreadable contrast) */
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='color']),
+  textarea,
+  select {
+    @apply bg-surface-1 text-text-primary border border-border rounded-md;
+    color-scheme: dark;
+  }
+
+  textarea {
+    @apply px-3 py-2;
+  }
+
   ::selection {
     background: rgba(62, 207, 142, 0.28);
     color: #f4f0e6;

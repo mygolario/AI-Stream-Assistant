@@ -177,7 +177,7 @@ export const PersonaTunerPage: React.FC = () => {
               value={customPrompt}
               onChange={(e) => setCustomPrompt(e.target.value)}
               rows={6}
-              className="w-full font-mono text-xs"
+              className="w-full font-mono text-xs bg-surface-1 border border-border rounded-md p-3 text-text-primary placeholder:text-text-tertiary hover:border-border-hover focus:border-accent-blue focus:ring-1 focus:ring-accent-blue outline-none transition-colors"
               placeholder="Custom system prompt..."
             />
           </div>
