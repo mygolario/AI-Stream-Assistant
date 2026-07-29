@@ -1,0 +1,26 @@
+# Environment variables / secrets
+.env
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+backend/venv/
+backend/.venv/
+.pytest_cache/
+
+# Node / Frontend
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+.vite/
+
+# Agent / Temp logs
+.agents/
+.idea/
+.vscode/
+*.log
