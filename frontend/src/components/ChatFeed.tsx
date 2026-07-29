@@ -1,6 +1,8 @@
 import React from 'react';
-import { Filter, Bot, User } from 'lucide-react';
-import { GlassCard } from './GlassCard';
+import { motion } from 'framer-motion';
+import { Bot, User, ShieldOff } from 'lucide-react';
+import { Card } from './ui/Card';
+import { Badge } from './ui/Badge';
 
 export interface ChatMessageItem {
   id: string;
@@ -15,66 +17,90 @@ interface ChatFeedProps {
   messages: ChatMessageItem[];
 }
 
+const messageVariants = {
+  initial: { opacity: 0, x: -12 },
+  animate: { opacity: 1, x: 0 },
+};
+
 export const ChatFeed: React.FC<ChatFeedProps> = ({ messages }) => {
   return (
-    <GlassCard className="flex flex-col h-[600px]">
-      <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-800">
-        <h3 className="font-semibold text-slate-200 flex items-center space-x-2">
-          <span>Stream Chat Monitor</span>
-        </h3>
-        <span className="text-xs text-slate-500">{messages.length} messages received</span>
+    <Card padding="none" className="flex flex-col h-[600px]">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <h3 className="text-sm font-semibold text-text-primary">Chat Feed</h3>
+        <span className="font-mono text-xs text-text-tertiary">
+          {messages.length} messages
+        </span>
       </div>
 
-      <div className="flex-1 overflow-y-auto space-y-3 pr-2">
-        {messages.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-slate-500 text-sm">
-            No messages yet. Start the Mock Stream Simulator to test live chat!
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+        {messages.length === 0 && (
+          <div className="flex items-center justify-center h-full text-text-tertiary text-sm">
+            No messages yet. Start the simulator or send a message.
           </div>
-        ) : (
-          messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`p-3 rounded-lg text-sm transition-all ${
-                msg.isFiltered
-                  ? 'bg-slate-900/40 border border-slate-800/60 opacity-60'
-                  : msg.isAiResponse
-                  ? 'bg-purple-950/40 border border-purple-500/30'
-                  : 'bg-slate-800/40 border border-slate-800'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-1 text-xs">
-                <div className="flex items-center space-x-2">
-                  {msg.isAiResponse ? (
-                    <span className="flex items-center space-x-1 text-purple-400 font-semibold">
-                      <Bot className="w-3.5 h-3.5" />
-                      <span>StreamBot AI</span>
-                    </span>
-                  ) : (
-                    <span className="flex items-center space-x-1 text-cyan-400 font-medium">
-                      <User className="w-3.5 h-3.5 text-slate-500" />
-                      <span>{msg.username}</span>
-                    </span>
-                  )}
-                </div>
+        )}
 
-                <div className="flex items-center space-x-2 text-slate-500">
-                  {msg.isFiltered && (
-                    <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center space-x-1 text-[10px]">
-                      <Filter className="w-2.5 h-2.5" />
-                      <span>Filtered (Noise)</span>
-                    </span>
-                  )}
-                  <span>{msg.timestamp}</span>
-                </div>
+        {messages.map((msg, i) => (
+          <motion.div
+            key={msg.id}
+            variants={messageVariants}
+            initial="initial"
+            animate="animate"
+            transition={{ duration: 0.2, delay: Math.min(i * 0.03, 0.3) }}
+            className={`
+              flex items-start gap-3 px-3 py-2.5 rounded-md transition-colors
+              ${msg.isFiltered
+                ? 'opacity-40 bg-transparent'
+                : msg.isAiResponse
+                  ? 'bg-accent-blue-subtle border-l-2 border-l-accent-blue'
+                  : 'bg-transparent hover:bg-surface-2'
+              }
+            `}
+          >
+            {/* Avatar */}
+            <div className={`
+              w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 mt-0.5
+              ${msg.isFiltered
+                ? 'bg-surface-2 text-text-tertiary'
+                : msg.isAiResponse
+                  ? 'bg-accent-blue-muted text-accent-blue'
+                  : 'bg-surface-2 text-text-tertiary'
+              }
+            `}>
+              {msg.isFiltered ? (
+                <ShieldOff className="w-3.5 h-3.5" />
+              ) : msg.isAiResponse ? (
+                <Bot className="w-3.5 h-3.5" />
+              ) : (
+                <User className="w-3.5 h-3.5" />
+              )}
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className={`text-xs font-medium ${
+                  msg.isAiResponse ? 'text-accent-blue' : 'text-text-secondary'
+                }`}>
+                  {msg.username}
+                </span>
+                <span className="text-[10px] text-text-tertiary font-mono">
+                  {msg.timestamp}
+                </span>
+                {msg.isFiltered && (
+                  <Badge variant="amber" className="text-[10px] py-0">Filtered</Badge>
+                )}
               </div>
-
-              <p className={`text-slate-300 ${msg.isAiResponse ? 'text-purple-200 font-medium' : ''}`}>
+              <p className={`text-sm leading-relaxed ${
+                msg.isFiltered ? 'line-through text-text-tertiary' : 'text-text-primary'
+              }`}>
                 {msg.message}
               </p>
             </div>
-          ))
-        )}
+          </motion.div>
+        ))}
       </div>
-    </GlassCard>
+    </Card>
   );
 };

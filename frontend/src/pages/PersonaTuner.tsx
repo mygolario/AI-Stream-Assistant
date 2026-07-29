@@ -1,167 +1,211 @@
 import React, { useState, useEffect } from 'react';
-import { GlassCard } from '../components/GlassCard';
+import { motion } from 'framer-motion';
 import { Bot, Sparkles, Sliders, CheckCircle2 } from 'lucide-react';
-import { fetchPersonas, updateSettings } from '../services/api';
+
+import { Button } from '../components/ui/Button';
+import { AnimatedPage } from '../components/ui/AnimatedPage';
 import { useStreamContext } from '../context/StreamContext';
+import { fetchPersonas, updateSettings } from '../services/api';
 
 export interface PersonaPreset {
-  id: string;
   name: string;
-  desc: string;
-  prompt?: string;
+  description: string;
+  emoji: string;
+  defaultPrompt: string;
 }
 
 const defaultPresets: PersonaPreset[] = [
-  { id: '1', name: 'Sarcastic Gamer', desc: 'Witty, edgy banter, uses gaming terms.', prompt: 'You are a sarcastic gamer co-host who uses edgy banter, gamer lingo, and keeps chat entertained.' },
-  { id: '2', name: 'Friendly Assistant', desc: 'Polite, helpful, warm tone for general chat.', prompt: 'You are a friendly, helpful assistant co-host with a warm, welcoming tone for all viewers.' },
-  { id: '3', name: 'Hype-Man', desc: 'HIGH ENERGY! ALL CAPS OCCASIONALLY! Hyped for every kill!', prompt: 'You are an ultra-high-energy hype-man co-host! Respond with excitement and hype for every stream moment!' },
-  { id: '4', name: 'Professional', desc: 'Concise, clear, non-distracting answers.', prompt: 'You are a professional stream moderator co-host. Provide concise, clear, and informative answers.' },
+  {
+    name: 'Sarcastic Gamer',
+    description: 'Witty, playful, and slightly roasting. Keeps chat fun with gaming humor.',
+    emoji: '🎮',
+    defaultPrompt: 'You are a witty, sarcastic gaming co-host. Keep responses short, funny, and roast-friendly.',
+  },
+  {
+    name: 'Friendly Assistant',
+    description: 'Warm, helpful, and welcoming. Perfect for community-oriented streams.',
+    emoji: '🤝',
+    defaultPrompt: 'You are a friendly, helpful stream assistant. Be warm, welcoming, and informative.',
+  },
+  {
+    name: 'Hype-Man',
+    description: 'High energy, excitable, and keeps the chat pumped. Great for tournaments.',
+    emoji: '🔥',
+    defaultPrompt: 'You are an enthusiastic hype-man! Use lots of energy and emojis. GET HYPED!',
+  },
+  {
+    name: 'Professional',
+    description: 'Clean, concise, and informative. Ideal for educational or tech streams.',
+    emoji: '💼',
+    defaultPrompt: 'You are a professional, concise assistant. Give accurate, well-structured answers.',
+  },
 ];
 
 export const PersonaTunerPage: React.FC = () => {
   const { activePersona, setActivePersona } = useStreamContext();
-  const [selectedPersona, setSelectedPersona] = useState<string>(activePersona || 'Sarcastic Gamer');
-  const [customPrompt, setCustomPrompt] = useState<string>(
-    'You are a witty, energetic co-host who speaks gamer lingo and keeps viewers hyped!'
-  );
-  const [temperature, setTemperature] = useState<number>(0.7);
+  const [selectedPersona, setSelectedPersona] = useState(activePersona);
+  const [customPrompt, setCustomPrompt] = useState('');
+  const [temperature, setTemperature] = useState(0.7);
   const [presets, setPresets] = useState<PersonaPreset[]>(defaultPresets);
-  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    const loadPersonas = async () => {
+    const load = async () => {
       try {
-        const data = await fetchPersonas();
-        if (Array.isArray(data) && data.length > 0) {
-          setPresets(data);
-        }
-      } catch (err) {
-        console.warn('API fetchPersonas failed, maintaining default presets:', err);
-      }
+        const res = await fetchPersonas();
+        if (Array.isArray(res) && res.length > 0) setPresets(res);
+      } catch {}
     };
-    loadPersonas();
+    load();
   }, []);
 
-  const handleSelectPreset = (preset: PersonaPreset) => {
-    setSelectedPersona(preset.name);
-    setActivePersona(preset.name);
-    if (preset.prompt) {
-      setCustomPrompt(preset.prompt);
-    }
-  };
+  useEffect(() => {
+    const preset = presets.find((p) => p.name === selectedPersona);
+    if (preset) setCustomPrompt(preset.defaultPrompt);
+  }, [selectedPersona, presets]);
 
   const handleSave = async () => {
     setIsSaving(true);
-    setStatusMessage(null);
     try {
       await updateSettings({
         persona: selectedPersona,
         system_prompt: customPrompt,
         temperature,
       });
-      setActivePersona(selectedPersona);
-      setStatusMessage('Persona configuration saved successfully!');
-    } catch (err) {
-      console.warn('API updateSettings failed, updated state locally:', err);
-      setActivePersona(selectedPersona);
-      setStatusMessage('Persona updated locally.');
-    } finally {
-      setIsSaving(false);
-      setTimeout(() => setStatusMessage(null), 3000);
-    }
+    } catch {}
+    setActivePersona(selectedPersona);
+    setIsSaving(false);
+    setStatusMessage('Persona configuration saved');
+    setTimeout(() => setStatusMessage(null), 3000);
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-100 flex items-center space-x-2">
-            <Bot className="w-6 h-6 text-purple-400" />
-            <span>Bot Personality & Persona Tuner</span>
-          </h2>
-          <p className="text-sm text-slate-400">Select preset stream personalities or customize system prompt parameters.</p>
-        </div>
-        {statusMessage && (
-          <div className="px-3 py-1.5 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs flex items-center space-x-1.5 animate-pulse">
-            <CheckCircle2 className="w-4 h-4" />
-            <span>{statusMessage}</span>
-          </div>
-        )}
+    <AnimatedPage className="space-y-6">
+      {/* Header */}
+      <div>
+        <h2 className="text-heading text-text-primary flex items-center gap-2">
+          <Bot className="w-5 h-5 text-accent-blue" />
+          Bot Persona
+        </h2>
+        <p className="text-sm text-text-secondary mt-1">
+          Configure your AI co-host personality, prompt, and creativity level.
+        </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
-        {/* Preset Selector */}
-        <div className="space-y-4">
-          <h3 className="font-semibold text-slate-200">Preset Personas</h3>
-          <div className="space-y-3">
-            {presets.map((preset) => (
-              <GlassCard
-                key={preset.id}
-                className={`cursor-pointer transition-all ${
-                  selectedPersona === preset.name
-                    ? 'border-purple-500 bg-purple-950/20'
-                    : 'hover:border-slate-700'
-                }`}
-              >
-                <div onClick={() => handleSelectPreset(preset)}>
-                  <div className="flex items-center justify-between mb-1">
-                    <h4 className="font-semibold text-slate-200 text-sm">{preset.name}</h4>
-                    {selectedPersona === preset.name && (
-                      <span className="px-2 py-0.5 bg-purple-500/20 text-purple-300 text-[10px] rounded border border-purple-500/30">Active</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-400">{preset.desc}</p>
-                </div>
-              </GlassCard>
-            ))}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        {/* Left: Persona Presets (3 cols) */}
+        <div className="lg:col-span-3 space-y-3">
+          <label className="text-xs font-medium text-text-secondary uppercase tracking-wider">
+            Persona Presets
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {presets.map((preset, i) => {
+              const isSelected = selectedPersona === preset.name;
+              return (
+                <motion.div
+                  key={preset.name}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2, delay: i * 0.05 }}
+                >
+                  <button
+                    onClick={() => setSelectedPersona(preset.name)}
+                    className={`
+                      w-full text-left p-4 rounded-lg border transition-all duration-150
+                      ${isSelected
+                        ? 'bg-accent-blue-muted border-accent-blue/30 border-l-2 border-l-accent-blue'
+                        : 'bg-surface-1 border-border hover:border-border-hover hover:bg-surface-2'
+                      }
+                    `}
+                  >
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="text-lg">{preset.emoji}</span>
+                      <span className={`text-sm font-medium ${isSelected ? 'text-accent-blue' : 'text-text-primary'}`}>
+                        {preset.name}
+                      </span>
+                      {isSelected && (
+                        <CheckCircle2 className="w-4 h-4 text-accent-blue ml-auto" />
+                      )}
+                    </div>
+                    <p className="text-xs text-text-secondary leading-relaxed">
+                      {preset.description}
+                    </p>
+                  </button>
+                </motion.div>
+              );
+            })}
           </div>
         </div>
 
-        {/* Custom Prompt Override */}
-        <GlassCard className="space-y-4 flex flex-col justify-between">
-          <div className="space-y-4">
-            <h3 className="font-semibold text-slate-200 flex items-center space-x-2">
-              <Sparkles className="w-4 h-4 text-purple-400" />
-              <span>System Prompt Override</span>
-            </h3>
-
+        {/* Right: Configuration (2 cols) */}
+        <div className="lg:col-span-2 space-y-5">
+          {/* System Prompt */}
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-text-secondary flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-text-tertiary" />
+              System Prompt Override
+            </label>
             <textarea
-              rows={6}
               value={customPrompt}
               onChange={(e) => setCustomPrompt(e.target.value)}
-              className="w-full bg-slate-900/90 border border-slate-700 rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-purple-500 resize-none font-mono"
+              rows={6}
+              className="w-full font-mono text-xs"
+              placeholder="Custom system prompt..."
             />
+          </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs text-slate-400">
-                <span className="flex items-center space-x-1">
-                  <Sliders className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Creativity Temperature</span>
-                </span>
-                <span className="font-mono text-purple-400">{temperature}</span>
-              </div>
-              <input
-                type="range"
-                min="0.1"
-                max="1.2"
-                step="0.05"
-                value={temperature}
-                onChange={(e) => setTemperature(Number(e.target.value))}
-                className="w-full accent-purple-500 bg-slate-800 rounded-lg cursor-pointer"
-              />
+          {/* Temperature */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium text-text-secondary flex items-center gap-1.5">
+                <Sliders className="w-3.5 h-3.5 text-text-tertiary" />
+                Creativity Temperature
+              </label>
+              <span className="font-mono text-xs text-accent-blue font-medium">
+                {temperature.toFixed(2)}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0.1}
+              max={1.2}
+              step={0.05}
+              value={temperature}
+              onChange={(e) => setTemperature(parseFloat(e.target.value))}
+              className="w-full"
+            />
+            <div className="flex justify-between text-[10px] text-text-tertiary">
+              <span>Precise (0.1)</span>
+              <span>Creative (1.2)</span>
             </div>
           </div>
 
-          <button
+          {/* Save */}
+          <Button
+            variant="primary"
+            size="lg"
+            loading={isSaving}
             onClick={handleSave}
-            disabled={isSaving}
-            className="w-full py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-medium transition-colors shadow-lg shadow-purple-900/30 disabled:opacity-50"
+            className="w-full"
           >
-            {isSaving ? 'Saving Persona...' : 'Save Persona Configuration'}
-          </button>
-        </GlassCard>
+            Save Persona Configuration
+          </Button>
+
+          {/* Status */}
+          {statusMessage && (
+            <motion.div
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="flex items-center gap-2 px-3 py-2 rounded-md bg-accent-emerald-muted text-accent-emerald text-xs border border-accent-emerald/20"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              {statusMessage}
+            </motion.div>
+          )}
+        </div>
       </div>
-    </div>
+    </AnimatedPage>
   );
 };

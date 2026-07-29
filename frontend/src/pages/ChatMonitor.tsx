@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { ChatFeed, ChatMessageItem } from '../components/ChatFeed';
 import { SimulatorControl } from '../components/SimulatorControl';
-import { GlassCard } from '../components/GlassCard';
+import { StatCard } from '../components/ui/StatCard';
+import { AnimatedPage } from '../components/ui/AnimatedPage';
 import { ShieldCheck, Zap, Activity } from 'lucide-react';
 import { useStreamContext } from '../context/StreamContext';
 import { processUserChatMessage } from '../services/aiHelper';
@@ -66,46 +67,38 @@ export const ChatMonitorPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Top Banner Stats */}
-      <div className="grid grid-cols-3 gap-4">
-        <GlassCard className="flex items-center space-x-4">
-          <div className="p-3 bg-emerald-500/10 rounded-xl border border-emerald-500/20 text-emerald-400">
-            <ShieldCheck className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="text-xs text-slate-400">Noise Drop Rate</div>
-            <div className="text-2xl font-bold text-slate-100">{dropRate}</div>
-          </div>
-        </GlassCard>
-
-        <GlassCard className="flex items-center space-x-4">
-          <div className="p-3 bg-purple-500/10 rounded-xl border border-purple-500/20 text-purple-400">
-            <Zap className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="text-xs text-slate-400">AI Response Speed</div>
-            <div className="text-2xl font-bold text-slate-100">{aiSpeed}</div>
-          </div>
-        </GlassCard>
-
-        <GlassCard className="flex items-center space-x-4">
-          <div className="p-3 bg-cyan-500/10 rounded-xl border border-cyan-500/20 text-cyan-400">
-            <Activity className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="text-xs text-slate-400">Tokens Saved</div>
-            <div className="text-2xl font-bold text-slate-100">{tokensSaved}</div>
-          </div>
-        </GlassCard>
+    <AnimatedPage className="space-y-6">
+      {/* Stat Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <StatCard
+          label="Noise Drop Rate"
+          value={dropRate}
+          icon={<ShieldCheck className="w-5 h-5" />}
+          iconColor="emerald"
+          trend={{ value: '+2.1% from last stream', direction: 'up' }}
+        />
+        <StatCard
+          label="AI Response Speed"
+          value={aiSpeed}
+          icon={<Zap className="w-5 h-5" />}
+          iconColor="blue"
+          subtitle="Avg. latency per response"
+        />
+        <StatCard
+          label="Tokens Saved"
+          value={tokensSaved}
+          icon={<Activity className="w-5 h-5" />}
+          iconColor="amber"
+          trend={{ value: '+18% efficiency', direction: 'up' }}
+        />
       </div>
 
       {/* Main Grid: Feed + Controls */}
-      <div className="grid grid-cols-3 gap-6">
-        <div className="col-span-2">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2">
           <ChatFeed messages={messages} />
         </div>
-        <div className="col-span-1">
+        <div className="lg:col-span-1">
           <SimulatorControl
             isRunning={isSimulating}
             onStart={handleStartSim}
@@ -114,6 +107,6 @@ export const ChatMonitorPage: React.FC = () => {
           />
         </div>
       </div>
-    </div>
+    </AnimatedPage>
   );
 };

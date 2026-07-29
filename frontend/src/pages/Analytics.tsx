@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { GlassCard } from '../components/GlassCard';
-import { BarChart3, TrendingUp, Filter, MessageSquare, DollarSign } from 'lucide-react';
+import { Card } from '../components/ui/Card';
+import { StatCard } from '../components/ui/StatCard';
+import { AnimatedPage } from '../components/ui/AnimatedPage';
+import { BarChart3, Filter, MessageSquare, DollarSign } from 'lucide-react';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -36,6 +38,15 @@ const defaultAnalyticsData: AnalyticsDataPoint[] = [
   { time: '20:15', totalMessages: 2480, filteredNoise: 2165, aiResponses: 315, costSavings: 42.80 },
 ];
 
+const chartTooltipStyle = {
+  backgroundColor: '#191A1E',
+  borderColor: '#27282D',
+  borderRadius: '8px',
+  color: '#EDEDEF',
+  fontSize: '12px',
+  padding: '8px 12px',
+};
+
 export const AnalyticsPage: React.FC = () => {
   const [data, setData] = useState<AnalyticsDataPoint[]>(defaultAnalyticsData);
   const [stats, setStats] = useState({
@@ -70,153 +81,133 @@ export const AnalyticsPage: React.FC = () => {
   }, []);
 
   return (
-    <div className="space-y-6">
+    <AnimatedPage className="space-y-6">
+      {/* Page Header */}
       <div>
-        <h2 className="text-2xl font-bold text-slate-100 flex items-center space-x-2">
-          <BarChart3 className="w-6 h-6 text-purple-400" />
-          <span>Stream Analytics Overview</span>
+        <h2 className="text-heading text-text-primary flex items-center gap-2">
+          <BarChart3 className="w-5 h-5 text-accent-blue" />
+          Stream Analytics
         </h2>
-        <p className="text-sm text-slate-400">Track chat message volume, LLM responses, and intent filter token savings.</p>
+        <p className="text-sm text-text-secondary mt-1">
+          Message volume, AI responses, and token cost savings across sessions.
+        </p>
       </div>
 
-      {/* Top Stat Cards */}
-      <div className="grid grid-cols-4 gap-4">
-        <GlassCard>
-          <div className="flex items-center space-x-3 mb-2">
-            <MessageSquare className="w-5 h-5 text-cyan-400" />
-            <span className="text-xs text-slate-400">Total Chat Messages</span>
-          </div>
-          <div className="text-2xl font-bold text-slate-100">{stats.totalMessages}</div>
-          <div className="text-[10px] text-emerald-400 flex items-center space-x-1 mt-1">
-            <TrendingUp className="w-3 h-3" />
-            <span>+14% from last stream</span>
-          </div>
-        </GlassCard>
-
-        <GlassCard>
-          <div className="flex items-center space-x-3 mb-2">
-            <Filter className="w-5 h-5 text-amber-400" />
-            <span className="text-xs text-slate-400">Filtered Noise Messages</span>
-          </div>
-          <div className="text-2xl font-bold text-slate-100">{stats.filteredNoise}</div>
-          <div className="text-[10px] text-slate-500 mt-1">{stats.dropRate} drop rate</div>
-        </GlassCard>
-
-        <GlassCard>
-          <div className="flex items-center space-x-3 mb-2">
-            <BarChart3 className="w-5 h-5 text-purple-400" />
-            <span className="text-xs text-slate-400">AI Bot Responses</span>
-          </div>
-          <div className="text-2xl font-bold text-slate-100">{stats.aiResponses}</div>
-          <div className="text-[10px] text-purple-400 mt-1">100% relevant context</div>
-        </GlassCard>
-
-        <GlassCard>
-          <div className="flex items-center space-x-3 mb-2">
-            <DollarSign className="w-5 h-5 text-emerald-400" />
-            <span className="text-xs text-slate-400">Est. API Cost Saved</span>
-          </div>
-          <div className="text-2xl font-bold text-emerald-400">{stats.costSaved}</div>
-          <div className="text-[10px] text-slate-500 mt-1">{stats.tokensSaved}</div>
-        </GlassCard>
+      {/* Stat Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          label="Total Chat Messages"
+          value={stats.totalMessages}
+          icon={<MessageSquare className="w-5 h-5" />}
+          iconColor="blue"
+          trend={{ value: '+14% from last stream', direction: 'up' }}
+        />
+        <StatCard
+          label="Filtered Noise"
+          value={stats.filteredNoise}
+          icon={<Filter className="w-5 h-5" />}
+          iconColor="amber"
+          subtitle={`${stats.dropRate} drop rate`}
+        />
+        <StatCard
+          label="AI Responses"
+          value={stats.aiResponses}
+          icon={<BarChart3 className="w-5 h-5" />}
+          iconColor="blue"
+          subtitle="100% relevant context"
+        />
+        <StatCard
+          label="Est. Cost Saved"
+          value={stats.costSaved}
+          icon={<DollarSign className="w-5 h-5" />}
+          iconColor="emerald"
+          subtitle={stats.tokensSaved}
+        />
       </div>
 
-      {/* Main Stream Volume Chart */}
-      <GlassCard className="space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <div>
-            <h3 className="font-semibold text-slate-200">Stream Message Volume & AI Responses</h3>
-            <p className="text-xs text-slate-400">Real-time chat rate vs intent filter drop rate and bot triggers</p>
-          </div>
+      {/* Stream Volume Chart */}
+      <Card padding="none">
+        <div className="px-4 py-3 border-b border-border">
+          <h3 className="text-sm font-semibold text-text-primary">Message Volume & AI Responses</h3>
+          <p className="text-xs text-text-tertiary mt-0.5">Real-time chat rate vs filter drop rate</p>
         </div>
-
-        <div className="h-72 w-full pt-2">
+        <div className="h-72 w-full p-4">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+            <AreaChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
               <defs>
-                <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#a855f7" stopOpacity={0.4} />
-                  <stop offset="95%" stopColor="#a855f7" stopOpacity={0} />
+                <linearGradient id="gradBlue" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
                 </linearGradient>
-                <linearGradient id="colorNoise" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.4} />
-                  <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                <linearGradient id="gradAmber" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="#F59E0B" stopOpacity={0} />
                 </linearGradient>
-                <linearGradient id="colorAi" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.6} />
-                  <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
+                <linearGradient id="gradEmerald" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#10B981" stopOpacity={0.35} />
+                  <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-              <XAxis dataKey="time" stroke="#94a3b8" fontSize={11} />
-              <YAxis stroke="#94a3b8" fontSize={11} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#0f172a',
-                  borderColor: '#334155',
-                  borderRadius: '0.75rem',
-                  color: '#f8fafc',
-                }}
+              <CartesianGrid strokeDasharray="3 3" stroke="#27282D" />
+              <XAxis dataKey="time" stroke="#5C5E6A" fontSize={11} fontFamily="JetBrains Mono, monospace" />
+              <YAxis stroke="#5C5E6A" fontSize={11} fontFamily="JetBrains Mono, monospace" />
+              <Tooltip contentStyle={chartTooltipStyle} />
+              <Legend
+                wrapperStyle={{ paddingTop: '10px', fontSize: '11px', fontFamily: 'Inter, sans-serif' }}
               />
-              <Legend wrapperStyle={{ paddingTop: '10px', fontSize: '12px' }} />
               <Area
                 type="monotone"
                 dataKey="totalMessages"
-                name="Total Chat Messages"
-                stroke="#a855f7"
+                name="Total Messages"
+                stroke="#3B82F6"
+                strokeWidth={2}
                 fillOpacity={1}
-                fill="url(#colorTotal)"
+                fill="url(#gradBlue)"
               />
               <Area
                 type="monotone"
                 dataKey="filteredNoise"
-                name="Noise Filtered Count"
-                stroke="#f59e0b"
+                name="Noise Filtered"
+                stroke="#F59E0B"
+                strokeWidth={2}
                 fillOpacity={1}
-                fill="url(#colorNoise)"
+                fill="url(#gradAmber)"
               />
               <Area
                 type="monotone"
                 dataKey="aiResponses"
                 name="AI Responses"
-                stroke="#06b6d4"
+                stroke="#10B981"
+                strokeWidth={2}
                 fillOpacity={1}
-                fill="url(#colorAi)"
+                fill="url(#gradEmerald)"
               />
             </AreaChart>
           </ResponsiveContainer>
         </div>
-      </GlassCard>
+      </Card>
 
-      {/* Token Cost Savings Timeline Chart */}
-      <GlassCard className="space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <div>
-            <h3 className="font-semibold text-slate-200">Token Cost Savings Timeline ($)</h3>
-            <p className="text-xs text-slate-400">Cumulative OpenRouter API cost saved by pre-filtering non-actionable chat messages</p>
-          </div>
+      {/* Cost Savings Bar Chart */}
+      <Card padding="none">
+        <div className="px-4 py-3 border-b border-border">
+          <h3 className="text-sm font-semibold text-text-primary">Token Cost Savings ($)</h3>
+          <p className="text-xs text-text-tertiary mt-0.5">Cumulative API cost saved by pre-filtering noise</p>
         </div>
-
-        <div className="h-60 w-full pt-2">
+        <div className="h-60 w-full p-4">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-              <XAxis dataKey="time" stroke="#94a3b8" fontSize={11} />
-              <YAxis stroke="#94a3b8" fontSize={11} tickFormatter={(val) => `$${val}`} />
+            <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#27282D" />
+              <XAxis dataKey="time" stroke="#5C5E6A" fontSize={11} fontFamily="JetBrains Mono, monospace" />
+              <YAxis stroke="#5C5E6A" fontSize={11} fontFamily="JetBrains Mono, monospace" tickFormatter={(val) => `$${val}`} />
               <Tooltip
-                contentStyle={{
-                  backgroundColor: '#0f172a',
-                  borderColor: '#334155',
-                  borderRadius: '0.75rem',
-                  color: '#f8fafc',
-                }}
+                contentStyle={chartTooltipStyle}
                 formatter={(val: any) => [`$${val}`, 'API Cost Saved']}
               />
-              <Bar dataKey="costSavings" name="Cost Savings ($)" fill="#10b981" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="costSavings" name="Cost Savings ($)" fill="#10B981" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
-      </GlassCard>
-    </div>
+      </Card>
+    </AnimatedPage>
   );
 };
