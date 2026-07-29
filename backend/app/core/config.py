@@ -8,7 +8,7 @@ class Settings(BaseSettings):
 
     # Database Settings
     POSTGRES_USER: str = "postgres"
-    POSTGRES_PASSWORD: str = "postgres"
+    POSTGRES_PASSWORD: str = "app_db_secret_key"
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: str = "5432"
     POSTGRES_DB: str = "ai_stream_assistant"

@@ -7,7 +7,7 @@ services:
     restart: always
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app_db_secret_key}
       POSTGRES_DB: ai_stream_assistant
     ports:
       - "5432:5432"
@@ -45,7 +45,7 @@ services:
       - POSTGRES_HOST=postgres
       - REDIS_HOST=redis
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-app_db_secret_key}
       - POSTGRES_DB=ai_stream_assistant
     depends_on:
       postgres:
