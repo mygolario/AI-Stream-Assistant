@@ -5,6 +5,7 @@ Knowledge Base RAG context snippets, and Streamer Chat Rules.
 """
 
 import logging
+from types import SimpleNamespace
 from typing import List, Dict, Any, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -105,10 +106,30 @@ CORE STREAM CHAT RULES:
                 db.add(p)
         await db.commit()
 
-    async def get_active_persona(self, db: AsyncSession) -> Tuple[Persona, StreamerSettings]:
+    async def get_active_persona(self, db: Optional[AsyncSession]) -> Tuple[Any, Any]:
         """
         Retrieve active Persona entity and StreamerSettings from database.
+        Falls back to built-in presets when Postgres is unavailable.
         """
+        if db is None:
+            preset = self.PRESETS[0]
+            persona = SimpleNamespace(
+                id=1,
+                name=preset["name"],
+                system_prompt=preset["system_prompt"],
+                temperature=preset["temperature"],
+                is_preset=True,
+            )
+            settings_obj = SimpleNamespace(
+                active_persona_id=1,
+                custom_prompt_override="",
+                general_knowledge_enabled=False,
+                openrouter_api_key="",
+                bot_muted=False,
+                mention_only=False,
+            )
+            return (persona, settings_obj)
+
         # Fetch StreamerSettings
         res_settings = await db.execute(select(StreamerSettings).limit(1))
         settings_obj = res_settings.scalars().first()
@@ -124,7 +145,7 @@ CORE STREAM CHAT RULES:
             active_persona = await db.get(Persona, settings_obj.active_persona_id)
 
         if not active_persona:
-            res_persona = await db.execute(select(Persona).where(Persona.is_preset == True).limit(1))
+            res_persona = await db.execute(select(Persona).where(Persona.is_preset == True).limit(1))  # noqa: E712
             active_persona = res_persona.scalars().first()
 
         if not active_persona:

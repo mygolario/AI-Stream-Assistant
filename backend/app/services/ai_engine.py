@@ -1,9 +1,11 @@
 """
 Coordinator for the 2-Stage AI Processing Pipeline with moderation + quotas.
+Works with Postgres when available; skips persistence when db is None (Vercel).
 """
 
 import logging
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Optional, List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -40,7 +42,7 @@ class PipelineResult:
 class AIEnginePipeline:
     async def process_chat_message(
         self,
-        db: AsyncSession,
+        db: Optional[AsyncSession],
         platform: str,
         username: str,
         user_message: str,
@@ -49,10 +51,10 @@ class AIEnginePipeline:
     ) -> PipelineResult:
         # Load settings / mute
         settings_obj = await self._get_settings(db, user_id)
-        if settings_obj and settings_obj.bot_muted:
+        if settings_obj and getattr(settings_obj, "bot_muted", False):
             return PipelineResult(status="muted", was_filtered=True, filter_reason="bot_muted", tokens_saved=0)
 
-        if settings_obj and settings_obj.mention_only:
+        if settings_obj and getattr(settings_obj, "mention_only", False):
             lowered = user_message.lower()
             if "@" not in lowered and not lowered.startswith("!ask"):
                 return PipelineResult(
@@ -76,17 +78,19 @@ class AIEnginePipeline:
         # Stage 1 filter
         filter_res: IntentFilterResult = intent_filter.evaluate(user_message)
         if not filter_res.is_actionable:
-            chat_entry = ChatMessage(
-                platform=platform,
-                username=username,
-                message=user_message,
-                is_ai_response=False,
-                is_filtered=True,
-                tokens_used=0,
-            )
-            db.add(chat_entry)
-            await self._update_analytics(db, is_filtered=True, tokens_saved=filter_res.estimated_tokens_saved)
-            await db.commit()
+            if db is not None:
+                db.add(
+                    ChatMessage(
+                        platform=platform,
+                        username=username,
+                        message=user_message,
+                        is_ai_response=False,
+                        is_filtered=True,
+                        tokens_used=0,
+                    )
+                )
+                await self._update_analytics(db, is_filtered=True, tokens_saved=filter_res.estimated_tokens_saved)
+                await db.commit()
             try:
                 await redis_helper.add_chat_turn(channel_id, username, user_message, None)
             except Exception as e:
@@ -111,7 +115,7 @@ class AIEnginePipeline:
 
         # Quota
         user = None
-        if user_id:
+        if user_id and db is not None:
             user = await db.get(User, user_id)
         allowed, used, limit = await check_and_increment_quota(user)
         if not allowed:
@@ -123,7 +127,13 @@ class AIEnginePipeline:
             )
 
         # Stage 2
-        kb_snippets = await rag_service.search_similar_items(db, user_message, top_k=3)
+        kb_snippets: List[Dict[str, Any]] = []
+        if db is not None:
+            try:
+                kb_snippets = await rag_service.search_similar_items(db, user_message, top_k=3)
+            except Exception as e:
+                logger.warning("RAG search skipped: %s", e)
+
         chat_history = []
         try:
             chat_history = await redis_helper.get_chat_history(channel_id, username, limit=6)
@@ -135,9 +145,9 @@ class AIEnginePipeline:
             persona_name=persona.name,
             persona_prompt=persona.system_prompt,
             kb_snippets=kb_snippets,
-            custom_prompt_override=settings_obj.custom_prompt_override if settings_obj else None,
+            custom_prompt_override=getattr(settings_obj, "custom_prompt_override", None) if settings_obj else None,
         )
-        if settings_obj and not settings_obj.general_knowledge_enabled:
+        if settings_obj and not getattr(settings_obj, "general_knowledge_enabled", False):
             system_prompt += (
                 "\n\nIf the knowledge base does not contain the answer, reply briefly that you "
                 "don't have that in the streamer's notes. Do not invent personal facts."
@@ -153,19 +163,17 @@ class AIEnginePipeline:
         messages_payload.append({"role": "user", "content": user_message})
 
         api_key = settings.OPENROUTER_API_KEY
-        if settings_obj and settings_obj.openrouter_api_key:
-            # Prefer platform env key; allow encrypted/plain workspace override only if env empty
+        if settings_obj and getattr(settings_obj, "openrouter_api_key", None):
             if not api_key:
                 api_key = settings_obj.openrouter_api_key
 
-        # Product lock: all LLM features use gemini-3.5-flash-lite
         model = settings.DEFAULT_OPENROUTER_MODEL
 
         ai_text, tokens_used, model_used = await openrouter_client.generate_chat_response(
             messages=messages_payload,
             model=model,
             api_key=api_key,
-            temperature=persona.temperature,
+            temperature=float(getattr(persona, "temperature", 0.7) or 0.7),
             max_tokens=120,
         )
         ai_text = chat_moderator.truncate_reply(ai_text, 150)
@@ -173,28 +181,29 @@ class AIEnginePipeline:
         if not outbound.allowed:
             ai_text = "I can't share that here — ask the streamer or mods."
 
-        db.add(
-            ChatMessage(
-                platform=platform,
-                username=username,
-                message=user_message,
-                is_ai_response=False,
-                is_filtered=False,
-                tokens_used=0,
+        if db is not None:
+            db.add(
+                ChatMessage(
+                    platform=platform,
+                    username=username,
+                    message=user_message,
+                    is_ai_response=False,
+                    is_filtered=False,
+                    tokens_used=0,
+                )
             )
-        )
-        db.add(
-            ChatMessage(
-                platform=platform,
-                username="AI Assistant",
-                message=ai_text,
-                is_ai_response=True,
-                is_filtered=False,
-                tokens_used=tokens_used,
+            db.add(
+                ChatMessage(
+                    platform=platform,
+                    username="AI Assistant",
+                    message=ai_text,
+                    is_ai_response=True,
+                    is_filtered=False,
+                    tokens_used=tokens_used,
+                )
             )
-        )
-        await self._update_analytics(db, is_ai_response=True, tokens_used=tokens_used)
-        await db.commit()
+            await self._update_analytics(db, is_ai_response=True, tokens_used=tokens_used)
+            await db.commit()
 
         try:
             await redis_helper.add_chat_turn(channel_id, username, user_message, ai_text)
@@ -227,7 +236,6 @@ class AIEnginePipeline:
             )
         except Exception:
             pass
-        # Also echo user message for monitors that only listen for message field
         await ws_manager.broadcast(
             {
                 "type": "chat_message",
@@ -247,7 +255,20 @@ class AIEnginePipeline:
             model_used=model_used,
         )
 
-    async def _get_settings(self, db: AsyncSession, user_id: Optional[int]) -> Optional[StreamerSettings]:
+    async def _get_settings(self, db: Optional[AsyncSession], user_id: Optional[int]) -> Optional[Any]:
+        if db is None:
+            if not user_id:
+                return None
+            try:
+                from app.services import supabase_auth
+
+                stored = await supabase_auth.get_settings_json(int(user_id))
+                if not stored:
+                    return None
+                return SimpleNamespace(**stored)
+            except Exception as e:
+                logger.warning("Supabase settings load failed: %s", e)
+                return None
         if user_id:
             result = await db.execute(select(StreamerSettings).where(StreamerSettings.user_id == user_id))
             obj = result.scalars().first()
@@ -257,6 +278,8 @@ class AIEnginePipeline:
         return result.scalars().first()
 
     async def _record_filtered(self, db, platform, username, message, reason, tokens_saved):
+        if db is None:
+            return
         db.add(
             ChatMessage(
                 platform=platform,
@@ -272,12 +295,14 @@ class AIEnginePipeline:
 
     async def _update_analytics(
         self,
-        db: AsyncSession,
+        db: Optional[AsyncSession],
         is_filtered: bool = False,
         is_ai_response: bool = False,
         tokens_used: int = 0,
         tokens_saved: int = 0,
     ):
+        if db is None:
+            return
         try:
             log = AnalyticsLog(
                 message_count=1,
@@ -286,7 +311,6 @@ class AIEnginePipeline:
                 estimated_tokens_saved=tokens_saved if is_filtered else 0,
             )
             db.add(log)
-            # tokens_used tracked on ChatMessage rows, not as "saved"
             _ = tokens_used
         except Exception as e:
             logger.error("AnalyticsLog error: %s", e)

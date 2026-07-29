@@ -3,31 +3,29 @@ backend/app/api/v1/chat.py
 Direct chat message processing and chat history REST endpoints.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from datetime import datetime, timezone
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from typing import List, Optional
 
 from app.core.database import get_db
 from app.models.chat_message import ChatMessage
 from app.schemas.chat import (
     DirectChatMessageRequest,
     DirectChatMessageResponse,
-    ChatMessageResponse
+    ChatMessageResponse,
 )
-from app.core.redis import redis_helper
+from app.services.ai_engine import ai_engine_pipeline
 
 router = APIRouter()
-
-
-from datetime import datetime, timezone
-from app.services.ai_engine import ai_engine_pipeline
 
 
 @router.post("/message", response_model=DirectChatMessageResponse)
 async def process_direct_chat_message(
     req: DirectChatMessageRequest,
-    db: AsyncSession = Depends(get_db)
+    db: Optional[AsyncSession] = Depends(get_db),
 ):
     """
     Process incoming chat message directly via REST API through the 2-Stage AI Engine Pipeline.
@@ -37,7 +35,7 @@ async def process_direct_chat_message(
         platform=req.platform,
         username=req.username,
         user_message=req.message,
-        channel_id=req.channel_id or "default"
+        channel_id=req.channel_id or "default",
     )
 
     chat_entry = ChatMessageResponse(
@@ -48,14 +46,14 @@ async def process_direct_chat_message(
         message=req.message,
         is_ai_response=False,
         is_filtered=result.was_filtered,
-        tokens_used=result.tokens_used
+        tokens_used=result.tokens_used,
     )
 
     return DirectChatMessageResponse(
         status=result.status,
         received_message=chat_entry,
         ai_response=result.ai_response,
-        was_filtered=result.was_filtered
+        was_filtered=result.was_filtered,
     )
 
 
@@ -63,9 +61,11 @@ async def process_direct_chat_message(
 async def get_chat_history(
     limit: int = Query(50, ge=1, le=200),
     platform: Optional[str] = Query(None),
-    db: AsyncSession = Depends(get_db)
+    db: Optional[AsyncSession] = Depends(get_db),
 ):
     """Retrieve recent chat history from DB."""
+    if db is None:
+        return []
     query = select(ChatMessage)
     if platform:
         query = query.where(ChatMessage.platform == platform)

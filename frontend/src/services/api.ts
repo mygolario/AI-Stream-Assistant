@@ -134,6 +134,21 @@ export const stopSimulator = async () => {
   return res.data;
 };
 
+export const sendChatMessage = async (payload: {
+  message: string;
+  username?: string;
+  platform?: string;
+  channel_id?: string;
+}) => {
+  const res = await api.post('/chat/message', {
+    message: payload.message,
+    username: payload.username || 'Tester',
+    platform: payload.platform || 'simulator',
+    channel_id: payload.channel_id || 'default',
+  });
+  return res.data;
+};
+
 export const connectPlatform = async (
   platform: string,
   payload?: { channel_id?: string; bot_token?: string },
