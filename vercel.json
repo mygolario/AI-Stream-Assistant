@@ -1,4 +1,5 @@
 {
+  "installCommand": "cd frontend && npm install && node scripts/check-deps.mjs",
   "buildCommand": "cd frontend && npm run build",
   "outputDirectory": "frontend/dist",
   "rewrites": [
