@@ -1,12 +1,15 @@
 """
 Analytics summary + real time-series from AnalyticsLog / ChatMessage.
+Returns empty zeros when Postgres is unavailable (Vercel Supabase-auth mode).
 """
+
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func, and_
-from datetime import datetime, timedelta, timezone
 
 from app.core.database import get_db
 from app.models.chat_message import ChatMessage
@@ -20,8 +23,36 @@ from app.schemas.analytics import (
 router = APIRouter()
 
 
+def _empty_summary() -> AnalyticsSummaryResponse:
+    return AnalyticsSummaryResponse(
+        total_messages=0,
+        filtered_messages=0,
+        ai_responses_sent=0,
+        estimated_tokens_saved=0,
+        filter_rate_percentage=0.0,
+        platform_breakdown={"kick": 0, "twitch": 0, "youtube": 0, "simulator": 0},
+    )
+
+
+def _empty_series() -> AnalyticsTimeSeriesResponse:
+    now = datetime.now(timezone.utc)
+    points = [
+        TimeSeriesPoint(
+            timestamp=(now - timedelta(hours=i)).strftime("%H:00"),
+            message_count=0,
+            ai_response_count=0,
+            filtered_count=0,
+        )
+        for i in range(23, -1, -1)
+    ]
+    return AnalyticsTimeSeriesResponse(points=points)
+
+
 @router.get("", response_model=AnalyticsSummaryResponse)
-async def get_analytics_summary(db: AsyncSession = Depends(get_db)):
+async def get_analytics_summary(db: Optional[AsyncSession] = Depends(get_db)):
+    if db is None:
+        return _empty_summary()
+
     res_total = await db.execute(select(func.count(ChatMessage.id)))
     total_messages = res_total.scalar() or 0
 
@@ -58,7 +89,10 @@ async def get_analytics_summary(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/time-series", response_model=AnalyticsTimeSeriesResponse)
-async def get_time_series_analytics(db: AsyncSession = Depends(get_db)):
+async def get_time_series_analytics(db: Optional[AsyncSession] = Depends(get_db)):
+    if db is None:
+        return _empty_series()
+
     now = datetime.now(timezone.utc)
     points: list[TimeSeriesPoint] = []
     for i in range(23, -1, -1):

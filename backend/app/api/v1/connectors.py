@@ -5,7 +5,7 @@ Connectors connect/disconnect/status API.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,13 +20,28 @@ from app.models.settings import StreamerSettings
 from app.connectors.manager import connector_manager
 from app.services.ai_engine import ai_engine_pipeline
 from app.services.quota import allowed_platforms
+from app.services import supabase_auth
 from app.api.websocket import ws_manager
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def _settings_for_user(db: AsyncSession, user: User) -> StreamerSettings:
+async def _settings_for_user(db: Optional[AsyncSession], user: Any) -> Any:
+    if db is None:
+        stored = await supabase_auth.get_settings_json(int(user.id))
+        data = {
+            "kick_channel_id": stored.get("kick_channel_id") or settings.KICK_CHANNEL_ID,
+            "twitch_channel_id": stored.get("twitch_channel_id") or settings.TWITCH_CHANNEL_ID,
+            "youtube_channel_id": stored.get("youtube_channel_id") or settings.YOUTUBE_CHANNEL_ID,
+            "kick_token_encrypted": stored.get("kick_token_encrypted") or "",
+            "twitch_token_encrypted": stored.get("twitch_token_encrypted") or "",
+            "youtube_token_encrypted": stored.get("youtube_token_encrypted") or "",
+        }
+        from types import SimpleNamespace
+
+        return SimpleNamespace(**data)
+
     result = await db.execute(select(StreamerSettings).where(StreamerSettings.user_id == user.id))
     obj = result.scalars().first()
     if obj:
@@ -98,7 +113,7 @@ async def connectors_status(user: User = Depends(get_current_user)):
 async def connect_platform(
     platform: str,
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: Optional[AsyncSession] = Depends(get_db),
 ):
     platform = platform.lower()
     if platform not in allowed_platforms(user.plan) and platform != "simulator":

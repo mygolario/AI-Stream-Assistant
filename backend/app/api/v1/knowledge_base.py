@@ -26,9 +26,11 @@ async def list_kb_items(
     category: Optional[str] = Query(None, description="Filter by category (faq, pc_specs, links, doc)"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
-    db: AsyncSession = Depends(get_db)
+    db: Optional[AsyncSession] = Depends(get_db)
 ):
     """List all Knowledge Base items with optional category filtering."""
+    if db is None:
+        return []
     query = select(KnowledgeBaseItem)
     if category:
         query = query.where(KnowledgeBaseItem.category == category)
@@ -41,9 +43,11 @@ async def list_kb_items(
 @router.post("", response_model=KBItemResponse, status_code=status.HTTP_201_CREATED)
 async def create_kb_item(
     item_in: KBItemCreate,
-    db: AsyncSession = Depends(get_db)
+    db: Optional[AsyncSession] = Depends(get_db)
 ):
     """Create a new Knowledge Base item and auto-generate vector embedding."""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Knowledge base writes require Postgres storage")
     db_item = KnowledgeBaseItem(
         title=item_in.title,
         category=item_in.category,
@@ -61,9 +65,11 @@ async def create_kb_item(
 @router.get("/{item_id}", response_model=KBItemResponse)
 async def get_kb_item(
     item_id: int,
-    db: AsyncSession = Depends(get_db)
+    db: Optional[AsyncSession] = Depends(get_db)
 ):
     """Get specific Knowledge Base item by ID."""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Knowledge base requires Postgres storage")
     item = await db.get(KnowledgeBaseItem, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Knowledge base item not found")
@@ -74,9 +80,11 @@ async def get_kb_item(
 async def update_kb_item(
     item_id: int,
     item_in: KBItemUpdate,
-    db: AsyncSession = Depends(get_db)
+    db: Optional[AsyncSession] = Depends(get_db)
 ):
     """Update Knowledge Base item and re-generate embedding."""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Knowledge base writes require Postgres storage")
     item = await db.get(KnowledgeBaseItem, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Knowledge base item not found")
@@ -99,9 +107,11 @@ async def update_kb_item(
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_kb_item(
     item_id: int,
-    db: AsyncSession = Depends(get_db)
+    db: Optional[AsyncSession] = Depends(get_db)
 ):
     """Delete Knowledge Base item."""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Knowledge base writes require Postgres storage")
     item = await db.get(KnowledgeBaseItem, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Knowledge base item not found")

@@ -7,8 +7,15 @@ function resolveWsUrl(): string {
   const host = window.location.host;
   const token = localStorage.getItem('asa_token');
   const q = token ? `?token=${encodeURIComponent(token)}` : '';
-  // Vite proxies /ws → backend in dev
   return `${proto}://${host}/ws/chat${q}`;
+}
+
+/** Vercel serverless does not support long-lived WebSockets. */
+function wsSupportedHere(): boolean {
+  const host = window.location.hostname;
+  if (host.endsWith('.vercel.app')) return false;
+  const envUrl = (import.meta as any).env?.VITE_WS_URL;
+  return Boolean(envUrl) || host === 'localhost' || host === '127.0.0.1';
 }
 
 export class ChatWebSocketClient {
@@ -17,12 +24,21 @@ export class ChatWebSocketClient {
   private url: string;
   private shouldReconnect = true;
   private reconnectTimer: number | null = null;
+  private failCount = 0;
+  private disabled = false;
 
   constructor(url?: string) {
     this.url = url || resolveWsUrl();
   }
 
   connect() {
+    // #region agent log
+    fetch('http://127.0.0.1:7942/ingest/e3668dee-f4dc-494a-9139-847d0d2fe9e3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2cb32b'},body:JSON.stringify({sessionId:'2cb32b',runId:'post-fix',hypothesisId:'C',location:'websocket.ts:connect',message:'ws connect attempt',data:{supported:wsSupportedHere(),host:window.location.host,failCount:this.failCount,disabled:this.disabled},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+
+    if (!wsSupportedHere() || this.disabled) {
+      return;
+    }
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       return;
     }
@@ -31,6 +47,7 @@ export class ChatWebSocketClient {
     this.ws = new WebSocket(this.url);
 
     this.ws.onopen = () => {
+      this.failCount = 0;
       console.log('Chat WebSocket connected');
     };
 
@@ -43,10 +60,18 @@ export class ChatWebSocketClient {
       }
     };
 
+    this.ws.onerror = () => {
+      this.failCount += 1;
+      if (this.failCount >= 2) {
+        this.disabled = true;
+        this.shouldReconnect = false;
+      }
+    };
+
     this.ws.onclose = () => {
       console.log('Chat WebSocket disconnected');
-      if (this.shouldReconnect) {
-        this.reconnectTimer = window.setTimeout(() => this.connect(), 3000);
+      if (this.shouldReconnect && !this.disabled) {
+        this.reconnectTimer = window.setTimeout(() => this.connect(), 5000);
       }
     };
   }

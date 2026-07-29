@@ -75,11 +75,15 @@ async def lifespan(app: FastAPI):
     connector_manager.simulator.set_broadcaster(ws_manager)
     logger.info("Mock Stream Simulator initialized with WebSocket broadcaster.")
 
-    # Start background job worker loop (embeddings / retries)
+    # Start background job worker loop (embeddings / retries) only when Redis is up
     from app.services.jobs import job_worker
+    from app.core.redis import redis_helper as _rh
 
     try:
-        await job_worker.start()
+        if _rh.redis:
+            await job_worker.start()
+        else:
+            logger.info("Job worker skipped (Redis unavailable).")
     except Exception as e:
         logger.warning("Job worker start skipped: %s", e)
 

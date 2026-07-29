@@ -18,9 +18,14 @@ export const LiveControlPage: React.FC = () => {
 
   const refresh = async () => {
     try {
-      setStatus(await fetchConnectorStatus());
-      const s = await fetchSettings();
-      setMuted(Boolean(s.bot_muted));
+      const next = await fetchConnectorStatus();
+      setStatus(next);
+      try {
+        const s = await fetchSettings();
+        setMuted(Boolean(s.bot_muted));
+      } catch {
+        // settings may be unavailable; connector status still usable
+      }
       setError(null);
     } catch (e: any) {
       setError(e?.response?.data?.detail || 'Unable to load connector status');

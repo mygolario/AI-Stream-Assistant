@@ -75,6 +75,7 @@ async def create_user(
         "role": "owner",
         "plan": "free",
         "is_active": True,
+        "settings_json": {},
     }
     async with httpx.AsyncClient(timeout=15.0) as client:
         res = await client.post(
@@ -87,3 +88,34 @@ async def create_user(
             raise RuntimeError(f"Supabase create failed: {res.status_code}")
         rows = res.json()
         return rows[0]
+
+
+async def update_user(user_id: int, patch: dict[str, Any]) -> Optional[dict[str, Any]]:
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        res = await client.patch(
+            _rest(),
+            params={"id": f"eq.{user_id}"},
+            json=patch,
+            headers=_headers(prefer="return=representation"),
+        )
+        if res.status_code >= 400:
+            logger.error("Supabase update user failed: %s %s", res.status_code, res.text[:300])
+            return None
+        rows = res.json()
+        return rows[0] if rows else None
+
+
+async def get_settings_json(user_id: int) -> dict[str, Any]:
+    row = await find_user_by_id(user_id)
+    if not row:
+        return {}
+    raw = row.get("settings_json") or {}
+    return raw if isinstance(raw, dict) else {}
+
+
+async def save_settings_json(user_id: int, data: dict[str, Any]) -> dict[str, Any]:
+    updated = await update_user(user_id, {"settings_json": data})
+    if not updated:
+        raise RuntimeError("Failed to save settings to Supabase")
+    raw = updated.get("settings_json") or data
+    return raw if isinstance(raw, dict) else data

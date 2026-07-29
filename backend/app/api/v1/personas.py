@@ -6,7 +6,8 @@ Endpoints for managing AI stream bot personas.
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from typing import List
+from typing import List, Optional
+from datetime import datetime, timezone
 
 from app.core.database import get_db
 from app.models.persona import Persona
@@ -43,8 +44,22 @@ DEFAULT_PRESETS = [
 
 
 @router.get("", response_model=List[PersonaResponse])
-async def list_personas(db: AsyncSession = Depends(get_db)):
+async def list_personas(db: Optional[AsyncSession] = Depends(get_db)):
     """List all available personas (presets + custom)."""
+    if db is None:
+        now = datetime.now(timezone.utc)
+        return [
+            PersonaResponse(
+                id=i + 1,
+                name=p["name"],
+                system_prompt=p["system_prompt"],
+                temperature=p["temperature"],
+                is_preset=True,
+                created_at=now,
+            )
+            for i, p in enumerate(DEFAULT_PRESETS)
+        ]
+
     result = await db.execute(select(Persona).order_by(Persona.id))
     personas = result.scalars().all()
 
@@ -61,18 +76,22 @@ async def list_personas(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/presets", response_model=List[PersonaResponse])
-async def list_preset_personas(db: AsyncSession = Depends(get_db)):
+async def list_preset_personas(db: Optional[AsyncSession] = Depends(get_db)):
     """List only preset personas."""
-    result = await db.execute(select(Persona).where(Persona.is_preset == True))
+    if db is None:
+        return await list_personas(db=None)
+    result = await db.execute(select(Persona).where(Persona.is_preset == True))  # noqa: E712
     return result.scalars().all()
 
 
 @router.post("", response_model=PersonaResponse, status_code=status.HTTP_201_CREATED)
 async def create_persona(
     persona_in: PersonaCreate,
-    db: AsyncSession = Depends(get_db)
+    db: Optional[AsyncSession] = Depends(get_db)
 ):
     """Create a new custom persona."""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Custom personas require Postgres storage")
     persona = Persona(
         name=persona_in.name,
         system_prompt=persona_in.system_prompt,
@@ -86,8 +105,14 @@ async def create_persona(
 
 
 @router.get("/{persona_id}", response_model=PersonaResponse)
-async def get_persona(persona_id: int, db: AsyncSession = Depends(get_db)):
+async def get_persona(persona_id: int, db: Optional[AsyncSession] = Depends(get_db)):
     """Get persona details by ID."""
+    if db is None:
+        presets = await list_personas(db=None)
+        for p in presets:
+            if p.id == persona_id:
+                return p
+        raise HTTPException(status_code=404, detail="Persona not found")
     persona = await db.get(Persona, persona_id)
     if not persona:
         raise HTTPException(status_code=404, detail="Persona not found")
@@ -98,9 +123,11 @@ async def get_persona(persona_id: int, db: AsyncSession = Depends(get_db)):
 async def update_persona(
     persona_id: int,
     persona_in: PersonaUpdate,
-    db: AsyncSession = Depends(get_db)
+    db: Optional[AsyncSession] = Depends(get_db)
 ):
     """Update custom persona (presets cannot be overwritten)."""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Persona updates require Postgres storage")
     persona = await db.get(Persona, persona_id)
     if not persona:
         raise HTTPException(status_code=404, detail="Persona not found")
@@ -121,8 +148,10 @@ async def update_persona(
 
 
 @router.delete("/{persona_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_persona(persona_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_persona(persona_id: int, db: Optional[AsyncSession] = Depends(get_db)):
     """Delete persona."""
+    if db is None:
+        raise HTTPException(status_code=503, detail="Persona deletes require Postgres storage")
     persona = await db.get(Persona, persona_id)
     if not persona:
         raise HTTPException(status_code=404, detail="Persona not found")
@@ -136,8 +165,14 @@ async def delete_persona(persona_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{persona_id}/activate", response_model=PersonaResponse)
-async def activate_persona(persona_id: int, db: AsyncSession = Depends(get_db)):
+async def activate_persona(persona_id: int, db: Optional[AsyncSession] = Depends(get_db)):
     """Set active persona in streamer settings."""
+    if db is None:
+        presets = await list_personas(db=None)
+        for p in presets:
+            if p.id == persona_id:
+                return p
+        raise HTTPException(status_code=404, detail="Persona not found")
     persona = await db.get(Persona, persona_id)
     if not persona:
         raise HTTPException(status_code=404, detail="Persona not found")
