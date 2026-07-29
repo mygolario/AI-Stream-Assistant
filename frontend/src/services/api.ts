@@ -27,12 +27,12 @@ export const fetchHealth = async () => {
 export const register = async (email: string, password: string, display_name?: string) => {
   // #region agent log
   const _regUrl = `${API_BASE}/auth/register`;
-  fetch('http://127.0.0.1:7942/ingest/e3668dee-f4dc-494a-9139-847d0d2fe9e3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2cb32b'},body:JSON.stringify({sessionId:'2cb32b',runId:'pre-fix',hypothesisId:'A',location:'api.ts:register',message:'register attempt',data:{apiBase:API_BASE,url:_regUrl,method:'POST',origin:typeof window!=='undefined'?window.location.origin:null,hasViteApiBase:Boolean((import.meta as any).env?.VITE_API_BASE_URL)},timestamp:Date.now()})}).catch(()=>{});
+  fetch('http://127.0.0.1:7942/ingest/e3668dee-f4dc-494a-9139-847d0d2fe9e3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2cb32b'},body:JSON.stringify({sessionId:'2cb32b',runId:'post-fix',hypothesisId:'A',location:'api.ts:register',message:'register attempt',data:{apiBase:API_BASE,url:_regUrl,method:'POST',origin:typeof window!=='undefined'?window.location.origin:null,hasViteApiBase:Boolean((import.meta as any).env?.VITE_API_BASE_URL)},timestamp:Date.now()})}).catch(()=>{});
   // #endregion
   try {
     const res = await api.post('/auth/register', { email, password, display_name });
     // #region agent log
-    fetch('http://127.0.0.1:7942/ingest/e3668dee-f4dc-494a-9139-847d0d2fe9e3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2cb32b'},body:JSON.stringify({sessionId:'2cb32b',runId:'pre-fix',hypothesisId:'A',location:'api.ts:register:success',message:'register success',data:{status:res.status,hasToken:Boolean(res.data?.access_token)},timestamp:Date.now()})}).catch(()=>{});
+    fetch('http://127.0.0.1:7942/ingest/e3668dee-f4dc-494a-9139-847d0d2fe9e3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2cb32b'},body:JSON.stringify({sessionId:'2cb32b',runId:'post-fix',hypothesisId:'A',location:'api.ts:register:success',message:'register success',data:{status:res.status,hasToken:Boolean(res.data?.access_token)},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
     localStorage.setItem('asa_token', res.data.access_token);
     return res.data;
@@ -40,7 +40,7 @@ export const register = async (email: string, password: string, display_name?: s
     // #region agent log
     const ct = err?.response?.headers?.['content-type'] || err?.response?.headers?.['Content-Type'];
     const bodyPreview = typeof err?.response?.data === 'string' ? err.response.data.slice(0, 120) : err?.response?.data;
-    fetch('http://127.0.0.1:7942/ingest/e3668dee-f4dc-494a-9139-847d0d2fe9e3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2cb32b'},body:JSON.stringify({sessionId:'2cb32b',runId:'pre-fix',hypothesisId:'A',location:'api.ts:register:error',message:'register failed',data:{status:err?.response?.status,statusText:err?.response?.statusText,contentType:ct,allow:err?.response?.headers?.allow||err?.response?.headers?.Allow,bodyPreview,code:err?.code,message:err?.message},timestamp:Date.now()})}).catch(()=>{});
+    fetch('http://127.0.0.1:7942/ingest/e3668dee-f4dc-494a-9139-847d0d2fe9e3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2cb32b'},body:JSON.stringify({sessionId:'2cb32b',runId:'post-fix',hypothesisId:'A',location:'api.ts:register:error',message:'register failed',data:{status:err?.response?.status,statusText:err?.response?.statusText,contentType:ct,allow:err?.response?.headers?.allow||err?.response?.headers?.Allow,bodyPreview,code:err?.code,message:err?.message},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
     throw err;
   }

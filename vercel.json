@@ -1,11 +1,14 @@
 {
-  "installCommand": "cd frontend && npm install",
-  "buildCommand": "cd frontend && npm run build",
-  "outputDirectory": "frontend/dist",
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "pip install -r requirements.txt && cd frontend && npm install",
+  "buildCommand": "cd frontend && npm run build && node ../scripts/copy-frontend-to-public.js",
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 60,
+      "includeFiles": "backend/**"
     }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api" }
   ]
 }

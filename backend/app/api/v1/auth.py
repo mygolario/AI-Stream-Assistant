@@ -1,11 +1,14 @@
 """
 Auth routes: register, login, me, OAuth redirects (Twitch/Kick/Google).
+Uses SQLAlchemy when Postgres is reachable; otherwise Supabase PostgREST fallback.
 """
 
 from __future__ import annotations
 
+import logging
 import secrets
-from typing import Optional
+from types import SimpleNamespace
+from typing import Any, Optional
 from urllib.parse import urlencode
 
 import httpx
@@ -25,7 +28,9 @@ from app.core.security import (
 from app.models.user import User
 from app.models.settings import StreamerSettings
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse
+from app.services import supabase_auth
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -36,42 +41,133 @@ async def _ensure_settings(db: AsyncSession, user_id: int) -> None:
         await db.commit()
 
 
-def _token_for(user: User) -> TokenResponse:
-    token = create_access_token(str(user.id), extra={"role": user.role, "plan": user.plan})
-    return TokenResponse(access_token=token, user=UserResponse.model_validate(user))
+def _token_for_user_obj(user: Any) -> TokenResponse:
+    token = create_access_token(
+        str(user.id),
+        extra={"role": getattr(user, "role", "owner"), "plan": getattr(user, "plan", "free")},
+    )
+    return TokenResponse(
+        access_token=token,
+        user=UserResponse(
+            id=int(user.id),
+            email=user.email,
+            display_name=user.display_name or "",
+            role=getattr(user, "role", "owner"),
+            plan=getattr(user, "plan", "free"),
+            plan_expires_at=getattr(user, "plan_expires_at", None),
+            organization_id=getattr(user, "organization_id", None),
+            oauth_provider=getattr(user, "oauth_provider", None),
+        ),
+    )
+
+
+def _ns_from_row(row: dict[str, Any]) -> SimpleNamespace:
+    return SimpleNamespace(**row)
 
 
 @router.post("/register", response_model=TokenResponse)
-async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
-    existing = await db.execute(select(User).where(User.email == body.email.lower()))
-    if existing.scalars().first():
+async def register(body: RegisterRequest, db: Optional[AsyncSession] = Depends(get_db)):
+    # #region agent log
+    try:
+        import httpx as _httpx
+
+        async with _httpx.AsyncClient(timeout=1.0) as _c:
+            await _c.post(
+                "http://127.0.0.1:7942/ingest/e3668dee-f4dc-494a-9139-847d0d2fe9e3",
+                headers={"Content-Type": "application/json", "X-Debug-Session-Id": "2cb32b"},
+                json={
+                    "sessionId": "2cb32b",
+                    "runId": "post-fix",
+                    "hypothesisId": "E",
+                    "location": "auth.py:register",
+                    "message": "register handler entered",
+                    "data": {
+                        "postgres_enabled": settings.postgres_enabled,
+                        "supabase": supabase_auth.supabase_configured(),
+                        "has_db": db is not None,
+                    },
+                    "timestamp": int(__import__("time").time() * 1000),
+                },
+            )
+    except Exception:
+        pass
+    # #endregion
+
+    # Prefer Postgres when available
+    if db is not None:
+        try:
+            existing = await db.execute(select(User).where(User.email == body.email.lower()))
+            if existing.scalars().first():
+                raise HTTPException(status_code=400, detail="Email already registered")
+            user = User(
+                email=body.email.lower(),
+                hashed_password=hash_password(body.password),
+                display_name=body.display_name or body.email.split("@")[0],
+                role="owner",
+                plan="free",
+            )
+            db.add(user)
+            await db.commit()
+            await db.refresh(user)
+            await _ensure_settings(db, user.id)
+            return _token_for_user_obj(user)
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning("Postgres register unavailable (%s); trying Supabase fallback", e)
+            await db.rollback()
+
+    if not supabase_auth.supabase_configured():
+        raise HTTPException(status_code=503, detail="Auth storage unavailable")
+
+    existing_row = await supabase_auth.find_user_by_email(body.email)
+    if existing_row:
         raise HTTPException(status_code=400, detail="Email already registered")
-    user = User(
-        email=body.email.lower(),
+    row = await supabase_auth.create_user(
+        email=body.email,
         hashed_password=hash_password(body.password),
         display_name=body.display_name or body.email.split("@")[0],
-        role="owner",
-        plan="free",
     )
-    db.add(user)
-    await db.commit()
-    await db.refresh(user)
-    await _ensure_settings(db, user.id)
-    return _token_for(user)
+    return _token_for_user_obj(_ns_from_row(row))
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.email == body.email.lower()))
-    user = result.scalars().first()
-    if not user or not user.hashed_password or not verify_password(body.password, user.hashed_password):
+async def login(body: LoginRequest, db: Optional[AsyncSession] = Depends(get_db)):
+    if db is not None:
+        try:
+            result = await db.execute(select(User).where(User.email == body.email.lower()))
+            user = result.scalars().first()
+            if user and user.hashed_password and verify_password(body.password, user.hashed_password):
+                return _token_for_user_obj(user)
+            if user:
+                raise HTTPException(status_code=401, detail="Invalid email or password")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning("Postgres login unavailable (%s); trying Supabase fallback", e)
+            await db.rollback()
+
+    if not supabase_auth.supabase_configured():
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    return _token_for(user)
+
+    row = await supabase_auth.find_user_by_email(body.email)
+    if not row or not row.get("hashed_password") or not verify_password(body.password, row["hashed_password"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    return _token_for_user_obj(_ns_from_row(row))
 
 
 @router.get("/me", response_model=UserResponse)
 async def me(user: User = Depends(get_current_user)):
-    return UserResponse.model_validate(user)
+    return UserResponse(
+        id=int(user.id),
+        email=user.email,
+        display_name=user.display_name or "",
+        role=getattr(user, "role", "owner"),
+        plan=getattr(user, "plan", "free"),
+        plan_expires_at=getattr(user, "plan_expires_at", None),
+        organization_id=getattr(user, "organization_id", None),
+        oauth_provider=getattr(user, "oauth_provider", None),
+    )
 
 
 @router.get("/oauth/{provider}")
@@ -111,7 +207,6 @@ async def oauth_start(provider: str):
             "scope": "user:read",
             "state": state,
         }
-        # Kick OAuth host may vary; use documented authorize endpoint
         return RedirectResponse(f"https://id.kick.com/oauth/authorize?{urlencode(params)}")
     raise HTTPException(404, "Unknown provider")
 
@@ -214,7 +309,6 @@ async def oauth_callback(
             display_name = data.get("display_name") or data.get("login") or "TwitchUser"
             email = data.get("email") or f"{subject}@twitch.oauth"
         elif provider == "kick":
-            # Best-effort Kick OAuth token exchange; adjust when Kick docs change
             token_res = await client.post(
                 "https://id.kick.com/oauth/token",
                 data={
@@ -238,8 +332,19 @@ async def oauth_callback(
         else:
             raise HTTPException(404, "Unknown provider")
 
-    user = await _upsert_oauth_user(
-        db, provider=provider, subject=subject, email=email, display_name=display_name
-    )
-    token = create_access_token(str(user.id), extra={"role": user.role, "plan": user.plan})
+    try:
+        user = await _upsert_oauth_user(
+            db, provider=provider, subject=subject, email=email, display_name=display_name
+        )
+        token = create_access_token(str(user.id), extra={"role": user.role, "plan": user.plan})
+    except Exception:
+        # Supabase OAuth upsert fallback
+        row = await supabase_auth.find_user_by_email(email)
+        if not row:
+            row = await supabase_auth.create_user(
+                email=email,
+                hashed_password=hash_password(secrets.token_urlsafe(16)),
+                display_name=display_name or email.split("@")[0],
+            )
+        token = create_access_token(str(row["id"]), extra={"role": row.get("role", "owner"), "plan": row.get("plan", "free")})
     return RedirectResponse(f"{settings.FRONTEND_URL}/auth/callback?token={token}")

@@ -1,3 +1,4 @@
+import os
 from typing import List, Optional
 from pydantic_settings import BaseSettings
 
@@ -8,6 +9,13 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "change-me-in-production-use-openssl-rand-hex-32"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
     DEMO_MODE: bool = False
+    # Public Supabase (PostgREST) fallback when DATABASE_URL is unavailable on Vercel
+    SUPABASE_URL: str = "https://lerlycpxjrhuhfzymrqk.supabase.co"
+    SUPABASE_ANON_KEY: str = (
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+        "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxlcmx5Y3B4anJodWhmenltcnFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUzMjgzODAsImV4cCI6MjEwMDkwNDM4MH0."
+        "hnQToPSzQQ0xKrADguUQfCL8z30J58PZm_pNIob9-SY"
+    )
 
     # Database Settings
     POSTGRES_USER: str = "postgres"
@@ -16,6 +24,13 @@ class Settings(BaseSettings):
     POSTGRES_PORT: str = "5432"
     POSTGRES_DB: str = "ai_stream_assistant"
     DATABASE_URL: Optional[str] = None
+
+    @property
+    def postgres_enabled(self) -> bool:
+        """Use direct Postgres when DATABASE_URL is set; skip on Vercel without it."""
+        if self.DATABASE_URL:
+            return True
+        return not bool(os.getenv("VERCEL"))
 
     @property
     def async_database_url(self) -> str:
@@ -79,6 +94,8 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "https://ai-stream-assistant.vercel.app",
+        "https://ai-stream-assistant-ario-projects.vercel.app",
     ]
 
     class Config:

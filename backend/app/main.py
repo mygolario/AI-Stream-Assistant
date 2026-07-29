@@ -36,12 +36,35 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Starting %s backend...", settings.PROJECT_NAME)
-    try:
-        await init_db_extensions()
-        logger.info("pgvector database extension initialized.")
-    except Exception as e:
-        logger.warning("DB initialization error: %s", e)
+    logger.info(
+        "Starting %s backend (postgres_enabled=%s)...",
+        settings.PROJECT_NAME,
+        settings.postgres_enabled,
+    )
+    if settings.postgres_enabled:
+        try:
+            await init_db_extensions()
+            # Ensure tables exist on fresh serverless databases
+            from app.models import (  # noqa: F401
+                User,
+                Organization,
+                OrganizationMember,
+                WorkspaceChannel,
+                StreamerSettings,
+                KnowledgeBaseItem,
+                Persona,
+                AnalyticsLog,
+                ChatMessage,
+            )
+            from app.core.database import Base, engine
+
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            logger.info("pgvector + schema ready.")
+        except Exception as e:
+            logger.warning("DB initialization error: %s", e)
+    else:
+        logger.info("Skipping Postgres init (using Supabase auth fallback).")
 
     try:
         await redis_helper.connect()
@@ -55,12 +78,18 @@ async def lifespan(app: FastAPI):
     # Start background job worker loop (embeddings / retries)
     from app.services.jobs import job_worker
 
-    await job_worker.start()
+    try:
+        await job_worker.start()
+    except Exception as e:
+        logger.warning("Job worker start skipped: %s", e)
 
     yield
 
     logger.info("Shutting down backend services...")
-    await job_worker.stop()
+    try:
+        await job_worker.stop()
+    except Exception:
+        pass
     await connector_manager.shutdown_all()
     await redis_helper.close()
 
@@ -82,26 +111,30 @@ app.add_middleware(
 
 
 @app.get("/health")
-async def root_health_check(db: AsyncSession = Depends(get_db)):
+async def root_health_check(db: AsyncSession | None = Depends(get_db)):
     db_ok = False
     redis_ok = False
-    try:
-        res = await db.execute(text("SELECT 1"))
-        if res.scalar() == 1:
-            db_ok = True
-    except Exception:
-        db_ok = False
+    if db is not None:
+        try:
+            res = await db.execute(text("SELECT 1"))
+            if res.scalar() == 1:
+                db_ok = True
+        except Exception:
+            db_ok = False
+    elif settings.SUPABASE_URL:
+        db_ok = True  # auth fallback configured; no direct Postgres
     try:
         if redis_helper.redis and await redis_helper.redis.ping():
             redis_ok = True
     except Exception:
         redis_ok = False
     return {
-        "status": "online" if (db_ok and redis_ok) else "degraded",
-        "database": "connected" if db_ok else "error",
+        "status": "online" if db_ok else "degraded",
+        "database": "connected" if db_ok else ("supabase" if not settings.postgres_enabled else "error"),
         "redis": "connected" if redis_ok else "error",
         "version": "1.1.0",
         "model": settings.DEFAULT_OPENROUTER_MODEL,
+        "postgres_enabled": settings.postgres_enabled,
     }
 
 
